@@ -9,6 +9,60 @@ earlier decision was reversed, add a new entry saying so.
 
 ---
 
+## 2026-07-29 (later still) — First consumer: undertale-vera
+
+**What:** No change to `thundera/` at all. `undertale-vera` deleted its vendored
+`inspector.py` and adopted the package — the first time a copy has actually
+died, which is the outcome the project exists for. One of four down.
+
+**How it landed there:** `examples/undertale-vera.toml` copied to that repo's
+root as `thundera.toml` (found by upward search, so `thundera look` works from
+anywhere in the tree), plus a `requirements-qa.txt` pinning
+`eye-of-thundera[all] @ git+https://github.com/xsytrance/eyeofthundera.git`.
+Its `.thundera/` is gitignored. Nothing in its CI installs or runs us — the
+sweep stays a local/manual gate there, deliberately.
+
+**Two things the example config was missing**, now true of both copies:
+- The `commons` view was never listed. It exists, has a `[data-view]` button,
+  and was simply overlooked — 9 UI surfaces, not 8.
+- The four `/api/*` paths the old inspector probed (`health`, `characters`,
+  `projects`, `lore`) had no equivalent, so adopting us would have *lost*
+  coverage. Added as `group = "api"`. Worth recording: they produce **zero**
+  noise. A JSON document rendered in a browser has no layout, so the visual
+  checks find nothing on it by construction, and what you get is the status
+  code — exactly what was wanted, with no severity tuning needed.
+
+**What was deliberately not carried over:** the inspector's `REQUIRED_ASSETS`
+list (three hardcoded static paths, fetched over HTTP to prove they exist). The
+browser engine already records every request the real page makes, so a missing
+`app.js` shows up as a `network` finding on the surface that needed it. A
+hand-maintained asset list is strictly worse: it drifts, and it only ever
+proves the files it happens to name.
+
+**The correction that matters — `tools/frontend_smoke.py` is NOT ours to
+replace.** `docs/HANDOFF.md` had listed it as a second deletion candidate
+("and ideally `tools/frontend_smoke.py`"). That was wrong, and reading it
+properly is what caught it. Both use Playwright and that is the entire
+resemblance. The smoke uploads save fixtures, asserts the route badge reads
+Pacifist, sends a chat message and waits for the reply, checks a Deltarune save
+flips the app to Dark World and reseats the roster, and fires an easter egg. It
+is a *functional* test, and it is that front end's only CI merge gate. The Eye
+has no notion of a content assertion — it judges how a page looks, not what the
+app does. Deleting it would have silently removed a merge gate. **The Eye does
+not subsume behavioural testing, and the HANDOFF should never have implied it
+could.** Fixed there.
+
+**Result on the consumer:** 13 surfaces × 2 viewports = 26 page views, 0 errors,
+0 skipped, 57 warnings (42 tap-target, 15 contrast), all mobile. The old
+inspector knew 5 URL paths and could see none of the 8 click-reached views,
+because that app has no routing. `--engine http` re-verified there: 13/13 200.
+
+**Still open:** `ember-lite` and `ember-pro` (byte-identical copies of the file
+undertale-vera just deleted, so this entry is most of their thinking), then
+`fft-psx-vera`, whose config has still never been run against a live stack.
+
+---
+
 ## 2026-07-29 (later) — The Eye itself, and first use in anger
 
 **What:** Added `thundera/eye.py` — an ASCII eye that opens while the sweep

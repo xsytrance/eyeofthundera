@@ -1,6 +1,6 @@
 # Handoff
 
-**Last updated:** 2026-07-29 (second session) · **Version:** 0.1.0 · **State:** working, published, used on three live apps, not yet a dependency of any of them
+**Last updated:** 2026-07-29 (third session) · **Version:** 0.1.0 · **State:** working, published, and adopted by its first consumer — one vendored copy deleted, three to go
 
 > This is the living state document. If you are picking this project up cold —
 > human or agent — read this file and `docs/VISION.md`, in that order, and you
@@ -25,7 +25,7 @@ existed as four diverging copies across Rod's projects.
 |---|---|
 | **Works** | Yes. 69/69 tests green. Used on three live apps (:9092, :9095, :9096). |
 | **Published** | `github.com/xsytrance/eyeofthundera` (private) |
-| **Installed anywhere** | **No.** No project consumes the package yet. |
+| **Consumed by** | **`undertale-vera`** — its `inspector.py` is deleted, its `thundera.toml` is committed. `ember-lite`, `ember-pro`, `fft-psx-vera` still carry copies. |
 | **Version** | 0.1.0, not on PyPI |
 | **CI** | GitHub Actions — pytest on push/PR (`.github/workflows/ci.yml`) |
 
@@ -47,8 +47,8 @@ existed as four diverging copies across Rod's projects.
   find config bugs — that's the point of running it.
 - **Vision (`--vision`) has never been exercised here.** Code carried over
   unchanged from fft, where it worked; unverified in this package.
-- **No consumer migration has happened.** The drift problem the project exists
-  to solve is still, technically, unsolved.
+- **Three of the four copies are still out there** (`ember-lite`, `ember-pro`,
+  `fft-psx-vera`). The drift problem is one-quarter solved.
 
 ### First real catch (2026-07-29)
 
@@ -109,6 +109,13 @@ Each of these has a reason recorded in `docs/VISION.md` or `docs/BUILDLOG.md`.
    `severity.<kind> = "off"` in *your* config.
 6. **`schema_version` is additive-only.** Agents parse this. Bump the version if
    you must change a key's meaning.
+7. **The Eye does not replace behavioural tests.** When migrating a consumer,
+   delete its *inspector*; do not touch its functional smoke, even when that
+   smoke also drives Playwright. The Eye judges how a page looks and has no
+   notion of a content assertion — "the route badge reads Pacifist", "chat
+   replied", "the roster reseated" are all outside it. An earlier draft of this
+   file suggested deleting `undertale-vera/tools/frontend_smoke.py`; that would
+   have removed the front end's only CI merge gate.
 
 ## Known gaps and rough edges
 
@@ -123,16 +130,29 @@ Each of these has a reason recorded in `docs/VISION.md` or `docs/BUILDLOG.md`.
   progress while a long run is under way.
 - `thundera init` writes a static template; it doesn't crawl the app to suggest
   surfaces.
+- **Contrast is measured at scroll 0, and a fixed bar poisons it.** Found on
+  undertale-vera 2026-07-29: 8 of 15 contrast findings at m390 were false. The
+  compositor uses `elementsFromPoint`, which is right for genuine overlays, but
+  text sitting *below the fold* under a fixed bottom nav samples the **bar's**
+  background, not the page's — so legible white-on-black text is reported as
+  "white on white, 1:1". Confirmed against the screenshots: the pages are fine.
+  Two candidate fixes, neither implemented: skip elements whose sample point is
+  covered by a `position: fixed` ancestor chain and report that as its own kind
+  (`obscured`), or scroll each element into view before sampling. Until then,
+  **treat a 1:1 same-colour contrast finding as suspect** — a real contrast bug
+  is usually a near-miss ratio, not a perfect tie.
 
 ## Next steps, in order
 
-1. **Migrate a consumer.** `undertale-vera` first — `examples/undertale-vera.toml`
-   already works. Add the package as a dev dependency, replace `inspector.py`
-   and ideally `tools/frontend_smoke.py`, then delete them. **This is the payoff;
-   until it happens the project hasn't earned its existence.**
-2. **Run the fft config for real** with its stack up. Expect and fix config bugs.
-3. **Then `ember-lite` / `ember-pro`** (their inspectors are identical copies of
-   undertale-vera's, so step 1 does most of the thinking).
+1. ~~**Migrate a consumer.**~~ **Done** — `undertale-vera`, 2026-07-29. Its
+   `inspector.py` is deleted; `thundera.toml` + `requirements-qa.txt` are
+   committed there. See the BUILDLOG entry for what the example config was
+   missing (`commons`, and the four `/api/*` surfaces).
+2. **Then `ember-lite` / `ember-pro`** — their inspectors are byte-identical
+   copies of the file undertale-vera just deleted, so step 1 did the thinking.
+   Each needs its own `thundera.toml`; neither app has been surveyed for views
+   yet. Note the ember-pro contrast bug below is still unfixed.
+3. **Run the fft config for real** with its stack up. Expect and fix config bugs.
 4. **MCP server** — after step 3, so the tool surface is designed against real
    usage. `api.look()` is the seam; this is an adapter, not a rewrite.
 5. Answer the open questions in `docs/VISION.md` (public vs private; is "eyes"

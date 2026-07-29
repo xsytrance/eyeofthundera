@@ -1,14 +1,18 @@
-# undertale-vera — a single-page app with NO url routing.
+# undertale-vera — the reference config, and the project's first real consumer.
 #
-# Every view is reached by clicking a nav button, so each surface is the same
-# path ("/") plus the click that reveals it. This is the case the original
-# Inspector could not express: it assumed every surface had an address.
+# This file is committed at that repo's root as `thundera.toml`; this copy is
+# kept in sync as a worked example. Run it with the app up on :9092:
 #
 #   thundera look -c examples/undertale-vera.toml
+#   thundera look -c examples/undertale-vera.toml --engine http
+#
+# undertale-vera is a single-page app with NO url routing: every view is
+# reached by clicking a nav button, so each UI surface is the same path ("/")
+# plus the click that reveals it.
 #
 # Views marked NEEDS_SAVE in app.js (council, timeline, journal, constellation,
 # chronicle, judgment, reports) bounce to the saves view unless a save has been
-# read, so they are not listed here — add them once you seed a project.
+# read, so they are not listed here — add them once a save is seeded.
 
 [app]
 name = "undertale-vera"
@@ -33,6 +37,8 @@ uv_seen_multivera = "1"
 uv_seen_howitworks = "1"
 uv_seen_credits = "1"
 uv_seen_commons = "1"
+
+# ── UI surfaces ──────────────────────────────────────────────────────────────
 
 [[surfaces]]
 key = "chat"
@@ -69,6 +75,13 @@ settle_ms = 1200
 pre_clicks = ["?#save-pill", '[data-view="multivera"]']
 
 [[surfaces]]
+key = "commons"
+path = "/"
+group = "info"
+settle_ms = 1200
+pre_clicks = ["?#save-pill", '[data-view="commons"]']
+
+[[surfaces]]
 key = "credits"
 path = "/"
 group = "info"
@@ -96,9 +109,46 @@ group = "extras"
 settle_ms = 2000
 pre_clicks = ["?#save-pill", '[data-view="guided"]']
 
+# ── API surfaces ─────────────────────────────────────────────────────────────
+# Carried over from the vendored inspector's SURFACES list so the migration
+# loses no coverage. These are status-code checks: a JSON document has no
+# layout, so the visual checks find nothing on them by construction.
+#
+# The old inspector also probed REQUIRED_ASSETS (determination.css, app.js,
+# music.js) over HTTP. That list is deliberately NOT carried over: the browser
+# engine records every request the real page makes, so a missing stylesheet or
+# script now surfaces as a `network` finding on `chat` — the same guarantee
+# without a hand-maintained list that drifts out of date.
+
+[[surfaces]]
+key = "api-health"
+path = "/api/health"
+group = "api"
+settle_ms = 400
+
+[[surfaces]]
+key = "api-characters"
+path = "/api/characters"
+group = "api"
+settle_ms = 400
+
+[[surfaces]]
+key = "api-projects"
+path = "/api/projects"
+group = "api"
+settle_ms = 400
+
+[[surfaces]]
+key = "api-lore"
+path = "/api/lore?q=waterfall"
+group = "api"
+settle_ms = 400
+
 [network]
 # The frontend smoke deliberately posts a bad watch path (expected 400).
-ignore = ["favicon", "/api/guided/watch"]
+# Google Fonts is an external CDN: the CSS ships serif fallbacks, so a failure
+# to reach it is an environment condition, not an app defect.
+ignore = ["favicon", "/api/guided/watch", "fonts.googleapis", "fonts.gstatic"]
 
 [vision]
 sample = ["chat", "soundtest"]
