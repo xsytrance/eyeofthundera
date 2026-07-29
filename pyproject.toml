@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eye-of-thundera"
+version = "0.1.0"
+description = "Sight beyond sight — give any agent eyes on a running web app."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Rod Agenor" }]
+keywords = ["qa", "screenshot", "accessibility", "agents", "playwright", "ui-testing"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Software Development :: Testing",
+]
+# The core runs on the standard library alone — that is deliberate, so the
+# `http` engine works on a box with nothing installed.
+dependencies = []
+
+[project.optional-dependencies]
+browser = ["playwright>=1.40"]     # the real eyes
+montage = ["pillow>=10.0"]         # thumbnail grids + vision downscaling
+vision = ["pillow>=10.0"]          # local vision-model critique (needs Ollama running)
+all = ["playwright>=1.40", "pillow>=10.0"]
+dev = ["playwright>=1.40", "pillow>=10.0", "pytest>=7.0"]
+
+[project.scripts]
+thundera = "thundera.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/xsytrance/eye-of-thundera"
+
+[tool.setuptools.packages.find]
+include = ["thundera*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

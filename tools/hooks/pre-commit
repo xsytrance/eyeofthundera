@@ -1,0 +1,43 @@
+#!/bin/sh
+# Eye of Thundera — documentation freshness gate.
+#
+# A commit that changes behaviour must also say what is true now. This blocks a
+# commit that touches thundera/*.py without touching docs/HANDOFF.md.
+#
+# Install:  tools/install-hooks.sh
+# Bypass:   SKIP_DOC_CHECK=1 git commit ...     (or git commit --no-verify)
+#
+# It is a reminder, not a cage. But if you are bypassing it often, either the
+# rule is wrong or the handoff has gone stale — fix one of those, not this file.
+
+if [ -n "$SKIP_DOC_CHECK" ]; then
+  exit 0
+fi
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+# Only care about changes to the package itself.
+echo "$staged" | grep -qE '^thundera/.*\.py$' || exit 0
+
+# Handoff updated in the same commit? Good.
+echo "$staged" | grep -qx 'docs/HANDOFF.md' && exit 0
+
+cat >&2 <<'EOF'
+
+  ✋ docs/HANDOFF.md was not updated.
+
+  This commit changes thundera/ — the handoff is how the next person (or
+  agent) finds out. At minimum update:
+
+      · Last updated
+      · Current state  — what is proven, what is not
+      · Next steps     — if this changed them
+
+  And append what happened, and why, to docs/BUILDLOG.md.
+
+  Then:   git add docs/HANDOFF.md docs/BUILDLOG.md
+
+  Genuinely not needed?   SKIP_DOC_CHECK=1 git commit ...
+
+EOF
+exit 1

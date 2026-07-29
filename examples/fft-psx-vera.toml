@@ -1,0 +1,223 @@
+# fft-psx-vera — the app the Eye was extracted from, now expressed as config.
+#
+# This is the hard case, and the reason the config layer exists at all:
+#   · hash routing (/#/dashboard)
+#   · six themes, each a localStorage seed pair
+#   · entity ids (project, character, dream team, battle room) that must not be
+#     hardcoded — they come from the app's own /api/diag/ui-map at run time
+#   · static pages that carry a fixed palette and only need shooting once
+#
+#   thundera look -c examples/fft-psx-vera.toml --quick
+#
+# Nothing below is known to the engine. Point it at a different app and none of
+# these words appear anywhere in the tool.
+
+[app]
+name = "fft-psx-vera"
+base = "http://127.0.0.1:7901"
+routing = "hash"
+
+[discovery]
+url = "http://127.0.0.1:7900/api/diag/ui-map"
+# {param} = where to find it in that JSON. A later param may reference an
+# earlier one, which is how character_id is scoped to the chosen project.
+params.project_id = "entities.project_ids.0"
+params.character_id = "entities.character_ids.{project_id}.0"
+params.team_id = "entities.dream_team_ids.{project_id}.0"
+params.room_code = "entities.battle_room_codes.0"
+
+[seeds]
+mv_welcome_seen = "1"
+mv_campfire_unlocked = "true"
+
+[[viewports]]
+label = "m390"
+width = 390
+height = 844
+scale = 2
+mobile = true
+
+[[viewports]]
+label = "d1280"
+width = 1280
+height = 800
+
+[[profiles]]
+name = "obsidian"
+seeds = { "fftvera-theme" = "obsidian", "fftvera-theme-mode" = "dark" }
+
+[[profiles]]
+name = "parchment"
+seeds = { "fftvera-theme" = "parchment", "fftvera-theme-mode" = "light" }
+
+[[profiles]]
+name = "beoulve"
+seeds = { "fftvera-theme" = "beoulve", "fftvera-theme-mode" = "dark" }
+
+[[profiles]]
+name = "blacklion"
+seeds = { "fftvera-theme" = "blacklion", "fftvera-theme-mode" = "dark" }
+
+[[profiles]]
+name = "whitelion"
+seeds = { "fftvera-theme" = "whitelion", "fftvera-theme-mode" = "light" }
+
+[[profiles]]
+name = "lucavi"
+seeds = { "fftvera-theme" = "lucavi", "fftvera-theme-mode" = "dark" }
+
+# ── core ─────────────────────────────────────────────────────────────────────
+[[surfaces]]
+key = "home"
+path = "/"
+group = "core"
+inventory = { sidebar = ".sidebar, aside, nav", save_card = ".save-card, .saves-grid > *" }
+
+[[surfaces]]
+key = "dashboard"
+path = "/dashboard"
+group = "core"
+
+[[surfaces]]
+key = "settings"
+path = "/settings"
+group = "core"
+inventory = { theme_cards = ".settings-grid" }
+
+[[surfaces]]
+key = "soundtrack"
+path = "/soundtrack"
+group = "core"
+
+[[surfaces]]
+key = "timeline"
+path = "/project/{project_id}/timeline"
+group = "core"
+
+# ── party ────────────────────────────────────────────────────────────────────
+[[surfaces]]
+key = "project"
+path = "/project/{project_id}"
+group = "party"
+settle_ms = 2000
+inventory = { party_list = ".char-list, .party-list, main", hero = ".mv-hero, .project-head" }
+
+[[surfaces]]
+key = "inventory"
+path = "/project/{project_id}/inventory"
+group = "party"
+settle_ms = 2000
+
+[[surfaces]]
+key = "studio"
+path = "/project/{project_id}/studio"
+group = "party"
+inventory = { casting_cards = ".studio-grid" }
+
+[[surfaces]]
+key = "character-detail"
+path = "/project/{project_id}/character/{character_id}"
+group = "party"
+settle_ms = 2000
+
+# ── council ──────────────────────────────────────────────────────────────────
+[[surfaces]]
+key = "campfire"
+path = "/project/{project_id}/campfire"
+group = "council"
+settle_ms = 2000
+inventory = { chat_input = "textarea, input[type=text]" }
+
+[[surfaces]]
+key = "group-chat"
+path = "/project/{project_id}/group-chat"
+group = "council"
+settle_ms = 2000
+inventory = { chat_input = "textarea, input[type=text]", char_select = ".select-characters, .char-chips" }
+
+[[surfaces]]
+key = "character-chat"
+path = "/project/{project_id}/character/{character_id}/chat"
+group = "council"
+settle_ms = 2000
+inventory = { chat_input = "textarea", message_area = ".chat-messages, .messages, main" }
+
+# ── battle ───────────────────────────────────────────────────────────────────
+[[surfaces]]
+key = "arena"
+path = "/arena"
+group = "battle"
+
+[[surfaces]]
+key = "arena-room"
+path = "/arena/{room_code}"
+group = "battle"
+
+[[surfaces]]
+key = "dream-team-list"
+path = "/project/{project_id}/dream-team"
+group = "battle"
+
+[[surfaces]]
+key = "dream-team-builder"
+path = "/project/{project_id}/dream-team/{team_id}"
+group = "battle"
+settle_ms = 2000
+
+[[surfaces]]
+key = "dream-team-chat"
+path = "/project/{project_id}/dream-team/{team_id}/chat"
+group = "battle"
+settle_ms = 2000
+
+[[surfaces]]
+key = "trials"
+path = "/project/{project_id}/trials"
+group = "battle"
+
+# ── standalone static pages ──────────────────────────────────────────────────
+# Fixed palette by design, so they are pinned to one profile rather than
+# re-shot under all six. (The old inspector hardcoded a `kind = "static"`
+# special case for this; `profiles` is the general form of it.)
+[[surfaces]]
+key = "static-campfire"
+path = "/campfire.html?project={project_id}&skipgate=1"
+group = "static"
+routing = "path"
+settle_ms = 3500
+profiles = ["obsidian"]
+
+[[surfaces]]
+key = "static-chronicle"
+path = "/chronicle.html?project={project_id}"
+group = "static"
+routing = "path"
+settle_ms = 3000
+profiles = ["obsidian"]
+
+[[surfaces]]
+key = "static-zodiac"
+path = "/zodiac.html?project={project_id}"
+group = "static"
+routing = "path"
+settle_ms = 3000
+profiles = ["obsidian"]
+
+[[surfaces]]
+key = "static-broadcast"
+path = "/broadcast.html"
+group = "static"
+routing = "path"
+settle_ms = 3000
+profiles = ["obsidian"]
+
+[[surfaces]]
+key = "static-onboarding"
+path = "/onboarding.html"
+group = "static"
+routing = "path"
+settle_ms = 2000
+profiles = ["obsidian"]
+
+[vision]
+sample = ["home", "project", "campfire", "character-chat", "inventory", "settings"]

@@ -1,0 +1,104 @@
+# undertale-vera — a single-page app with NO url routing.
+#
+# Every view is reached by clicking a nav button, so each surface is the same
+# path ("/") plus the click that reveals it. This is the case the original
+# Inspector could not express: it assumed every surface had an address.
+#
+#   thundera look -c examples/undertale-vera.toml
+#
+# Views marked NEEDS_SAVE in app.js (council, timeline, journal, constellation,
+# chronicle, judgment, reports) bounce to the saves view unless a save has been
+# read, so they are not listed here — add them once you seed a project.
+
+[app]
+name = "undertale-vera"
+base = "http://127.0.0.1:9092"
+routing = "path"
+
+# Skip the first-run power picker and the one-shot per-view explainer modals —
+# otherwise every screenshot is a picture of a modal.
+[seeds]
+uv_power_seen = "1"
+uv_seen_council = "1"
+uv_seen_timeline = "1"
+uv_seen_journal = "1"
+uv_seen_constellation = "1"
+uv_seen_chronicle = "1"
+uv_seen_judgment = "1"
+uv_seen_reports = "1"
+uv_seen_soundtest = "1"
+uv_seen_workshop = "1"
+uv_seen_guided = "1"
+uv_seen_multivera = "1"
+uv_seen_howitworks = "1"
+uv_seen_credits = "1"
+uv_seen_commons = "1"
+
+[[surfaces]]
+key = "chat"
+path = "/"
+group = "core"
+settle_ms = 2500
+inventory = { cast = ".chat-empty-cast", brand = ".brand-name" }
+
+[[surfaces]]
+key = "saves"
+path = "/"
+group = "core"
+settle_ms = 1200
+# On mobile the nav lives in a slide-in drawer: #save-pill opens it, and it
+# does not exist as a click target on desktop — hence the optional "?" prefix.
+# The saves view has no [data-view] nav button — the rail's "Read a save"
+# button is what opens it. (Guessing the selector here is how you get a
+# pre_click_failed finding, which is the point: the Eye refuses to call a
+# surface clean when it never actually got there.)
+pre_clicks = ["?#save-pill", "#add-save-btn"]
+
+[[surfaces]]
+key = "howitworks"
+path = "/"
+group = "info"
+settle_ms = 1200
+pre_clicks = ["?#save-pill", '[data-view="howitworks"]']
+
+[[surfaces]]
+key = "multivera"
+path = "/"
+group = "info"
+settle_ms = 1200
+pre_clicks = ["?#save-pill", '[data-view="multivera"]']
+
+[[surfaces]]
+key = "credits"
+path = "/"
+group = "info"
+settle_ms = 1200
+pre_clicks = ["?#save-pill", '[data-view="credits"]']
+
+[[surfaces]]
+key = "soundtest"
+path = "/"
+group = "extras"
+settle_ms = 2000
+pre_clicks = ["?#save-pill", '[data-view="soundtest"]']
+
+[[surfaces]]
+key = "workshop"
+path = "/"
+group = "extras"
+settle_ms = 2000
+pre_clicks = ["?#save-pill", '[data-view="workshop"]']
+
+[[surfaces]]
+key = "guided"
+path = "/"
+group = "extras"
+settle_ms = 2000
+pre_clicks = ["?#save-pill", '[data-view="guided"]']
+
+[network]
+# The frontend smoke deliberately posts a bad watch path (expected 400).
+ignore = ["favicon", "/api/guided/watch"]
+
+[vision]
+sample = ["chat", "soundtest"]
