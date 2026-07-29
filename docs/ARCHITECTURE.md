@@ -1,6 +1,6 @@
 # Architecture
 
-Nine modules, one entry point, one data shape that survives end to end.
+Ten modules, one entry point, one data shape that survives end to end.
 
 ```
                     thundera.toml
@@ -48,6 +48,7 @@ Nine modules, one entry point, one data shape that survives end to end.
 | `baseline.py` | ~70 | Flatten, diff, save. "What's new since accepted?" |
 | `vision.py` | ~65 | Optional Ollama vision-model critique. Best-effort by contract. |
 | `montage.py` | ~85 | Health-coloured thumbnail grids. Needs Pillow. |
+| `eye.py` | ~145 | The ASCII eye: opening animation + verdict. **stderr only, tty only.** |
 
 ## The one entry point
 
@@ -202,6 +203,7 @@ tests/test_config.py       config parsing, validation, {param} resolution
 tests/test_findings.py     analyze(), the report contract, baseline diffing
 tests/test_end_to_end.py   real sweeps + the CLI, http engine, no browser needed
 tests/test_browser.py      real Chromium; auto-skipped without Playwright
+tests/test_eye.py          the animation, and proof it never touches stdout
 ```
 
 `test_end_to_end.py` and `test_browser.py` spin up a real `ThreadingHTTPServer`
@@ -209,4 +211,4 @@ over a temp directory — no mocks of the thing under test. The browser suite
 asserts the properties only a renderer can prove: seeds landing before first
 paint, a required click that misses failing the run, an optional one not.
 
-Run: `.venv/bin/python -m pytest -q` (60 tests, ~40s with the browser suite).
+Run: `.venv/bin/python -m pytest -q` (69 tests, ~40s with the browser suite).

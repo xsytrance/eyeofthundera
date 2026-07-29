@@ -9,6 +9,68 @@ earlier decision was reversed, add a new entry saying so.
 
 ---
 
+## 2026-07-29 (later) — The Eye itself, and first use in anger
+
+**What:** Added `thundera/eye.py` — an ASCII eye that opens while the sweep
+runs and closes on a verdict. Then used the tool on three live apps.
+
+### Why decoration was the right call here
+
+Rod asked to see "your ASCII animation", which didn't exist. For a project
+named after an artefact that grants *sight beyond sight*, a CLI that opens an
+eye is the brand doing work rather than a gag — and it was made to earn its
+place: **the iris colour at the end of a run is the verdict.** Cyan while
+looking, then green / amber / red. The thing you watch is the thing you read.
+
+### Containment, which is the part that actually mattered
+
+The agent contract says stdout is the product. So the eye:
+
+- writes to **stderr only**, never stdout (test asserts it)
+- is off unless stderr is a terminal
+- is forced off under `--json`, `--quiet`, `--no-animation`, `THUNDERA_NO_ANIM=1`
+- respects `NO_COLOR`
+
+Frames are **generated on a fixed grid**, not hand-drawn — the hand-drawn first
+pass had misaligned parens on two frames, which is exactly the kind of thing
+this tool exists to catch in other people's software.
+
+**A real bug found by its own test:** cursor-rewind escapes (`\033[3A\033[J`)
+were being written even to a non-tty stream, so redirected stderr would collect
+control codes. Now a non-tty draws the open eye once with no escapes at all.
+`test_a_plain_stream_gets_no_escape_codes_at_all` guards it.
+
+### Using it — three live apps
+
+| App | Result |
+|---|---|
+| `undertale-vera` :9092 | 3 warnings — tap targets under the 32px floor |
+| `ember-lite` :9095 | the same 3 |
+| `ember-pro` :9096 | those 3 **plus a genuine accessibility bug** |
+
+The ember-pro find is the first thing the Eye caught that nobody knew about:
+
+```
+contrast | span#power-status > a — 2.2:1 (needs 4.5:1)
+           [rgb(0, 0, 238) on rgb(0, 0, 0)] "run Ember yourself..."
+```
+
+`rgb(0,0,238)` is **unstyled default browser blue**. `app.js` injects an `<a>`
+into `#power-status`, and the stylesheet only colours links under `.commons`,
+`.hiw` and `.cm-hero-credit` — so this one falls back to the UA default on a
+black background. It appears only when the instance is "locked" (the shared
+deployment), which is why ember-pro has it and ember-lite doesn't: the bug is
+on the public-facing instance, in the very sentence telling people how to run
+Ember themselves.
+
+Worth noting *why* the deterministic check caught it: the contrast check
+composites the real paint stack, so it read the true black behind the link
+rather than guessing from an ancestor.
+
+Tests: 60 → 69.
+
+---
+
 ## 2026-07-29 — Extraction, v0.1.0
 
 **What:** Created the project. Extracted the Vera Inspector into a standalone,

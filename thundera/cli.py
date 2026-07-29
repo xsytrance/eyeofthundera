@@ -14,6 +14,7 @@ from pathlib import Path
 
 from . import __version__
 from . import baseline as baseline_mod
+from . import eye
 from .api import look, preflight
 from .config import Config, ConfigError
 
@@ -101,6 +102,9 @@ def _load_config(args, parser) -> Config:
 def cmd_look(args, parser) -> int:
     err = sys.stderr
     log = (lambda *a: None) if args.quiet else (lambda *a: print(*a, file=err))
+    # The animation is for a human watching a terminal. Under --json or --quiet
+    # there is no human, so force it off rather than relying on the tty check.
+    animate = None if not (args.quiet or args.json or args.no_animation) else False
 
     cfg = _load_config(args, parser).select(
         surfaces=args.surfaces.split(",") if args.surfaces else None,
@@ -113,6 +117,8 @@ def cmd_look(args, parser) -> int:
     vision_mode = "off"
     if args.vision:
         vision_mode = "all" if args.vision == "all" else "sample"
+
+    eye.open_eye(err, force=animate)
 
     baseline_path = args.baseline
     if args.update_baseline and not baseline_path:
@@ -129,6 +135,15 @@ def cmd_look(args, parser) -> int:
         warn_as_error=args.warn_as_error,
         browser_path=args.browser,
         log=log,
+    )
+
+    status = eye.status_of(result.summary)
+    s = result.summary
+    eye.verdict(
+        status,
+        f"{s['errors']} errors · {s['warnings']} warnings",
+        err,
+        force=animate,
     )
 
     if args.json:
@@ -236,6 +251,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="exit 1 on any new finding vs baseline, warnings included")
     look_p.add_argument("--warn-as-error", action="store_true")
     look_p.add_argument("--no-montage", action="store_true")
+    look_p.add_argument("--no-animation", action="store_true",
+                        help="skip the eye (also: THUNDERA_NO_ANIM=1)")
     look_p.add_argument("-q", "--quiet", action="store_true", help="silence progress on stderr")
     look_p.set_defaults(fn=cmd_look)
 

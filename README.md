@@ -61,11 +61,15 @@ The contract, which is the whole point of the project:
 
 ```
 stdout   the product. With --json it is the findings JSON and nothing else.
-stderr   progress chatter. Always safe to discard.
+stderr   progress chatter, and the eye. Always safe to discard.
 exit 0   clean
 exit 1   findings that count as failure
 exit 2   usage or config error
 ```
+
+The eye animation draws on **stderr and only when stderr is a terminal**, so it
+can never contaminate what you parse. It is additionally forced off by `--json`,
+`--quiet`, `--no-animation` and `THUNDERA_NO_ANIM=1`, and respects `NO_COLOR`.
 
 ```bash
 thundera look http://localhost:3000 --json -q
@@ -110,6 +114,28 @@ for rec in result.body["records"]:
     for f in rec["findings"]:
         print(rec["surface"], f["kind"], f["detail"])
 ```
+
+## The eye
+
+Run it in a terminal and it opens an eye while it looks, then closes on a
+verdict whose iris colour *is* the result — cyan while working, then green,
+amber or red.
+
+```
+     .------------------------------.
+    (     .--------------------.     )
+    (     |                    |     )
+    (     |                    |     )
+    (     |        (o)         |     )
+    (     |                    |     )
+    (     |                    |     )
+    (     '--------------------'     )
+     '------------------------------'
+              sight beyond sight
+```
+
+Turn it off with `--no-animation` or `THUNDERA_NO_ANIM=1`. It is already off
+whenever stderr is not a terminal.
 
 ## What it checks
 

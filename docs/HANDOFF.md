@@ -1,6 +1,6 @@
 # Handoff
 
-**Last updated:** 2026-07-29 · **Version:** 0.1.0 · **State:** working, published, unused by any consumer yet
+**Last updated:** 2026-07-29 (second session) · **Version:** 0.1.0 · **State:** working, published, used on three live apps, not yet a dependency of any of them
 
 > This is the living state document. If you are picking this project up cold —
 > human or agent — read this file and `docs/VISION.md`, in that order, and you
@@ -23,7 +23,7 @@ existed as four diverging copies across Rod's projects.
 
 | | |
 |---|---|
-| **Works** | Yes. 60/60 tests green. Verified against live `undertale-vera` on :9092. |
+| **Works** | Yes. 69/69 tests green. Used on three live apps (:9092, :9095, :9096). |
 | **Published** | `github.com/xsytrance/eyeofthundera` (private) |
 | **Installed anywhere** | **No.** No project consumes the package yet. |
 | **Version** | 0.1.0, not on PyPI |
@@ -37,6 +37,8 @@ existed as four diverging copies across Rod's projects.
 - Baseline round-trip stable across two live runs (0 new, 0 fixed — no jitter)
 - Montage renders correctly (verified by eye, 16 distinct views)
 - `examples/fft-psx-vera.toml` validates and reproduces the original registry
+- The ASCII eye animates in a real tty and stays entirely out of stdout
+- **It has found a bug nobody knew about** — see *First real catch* below
 
 ### What is *not* proven
 
@@ -48,6 +50,15 @@ existed as four diverging copies across Rod's projects.
 - **No consumer migration has happened.** The drift problem the project exists
   to solve is still, technically, unsolved.
 
+### First real catch (2026-07-29)
+
+On `ember-pro` :9096, a link rendering at **2.2:1 contrast** — unstyled default
+browser blue (`rgb(0,0,238)`) on black. `app.js` injects an `<a>` into
+`#power-status`; the stylesheet only colours links under `.commons`, `.hiw` and
+`.cm-hero-credit`. Only appears on "locked" (shared) instances, so ember-lite is
+clean and the public-facing one is not. **Not yet fixed — it is another repo's
+bug, reported to Rod.**
+
 ## Get running in two minutes
 
 ```bash
@@ -55,7 +66,7 @@ cd ~/eye-of-thundera
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/playwright install chromium      # if ~/.cache/ms-playwright is empty
-.venv/bin/python -m pytest -q              # expect 60 passed
+.venv/bin/python -m pytest -q              # expect 69 passed
 ```
 
 Then, with any web app running:
@@ -73,7 +84,7 @@ populated it, which is why the browser suite ran without a separate download.
 ```
 thundera/          the package — see docs/ARCHITECTURE.md for the module map
 examples/          real configs for undertale-vera and fft-psx-vera
-tests/             60 tests; test_browser.py auto-skips without Playwright
+tests/             69 tests; test_browser.py auto-skips without Playwright
 docs/VISION.md     why this exists, and the principles that are load-bearing
 docs/ARCHITECTURE.md   modules, data shapes, how {param} resolution works
 docs/BUILDLOG.md   append-only history — "why does it do that?" lives here
@@ -108,6 +119,8 @@ Each of these has a reason recorded in `docs/VISION.md` or `docs/BUILDLOG.md`.
 - No video/trace capture — you get the final screenshot, not the path there.
 - The `http` engine can't verify hash routes (it says so in `engine_note`).
 - Vision is Ollama-only.
+- The eye animation is a fixed 6-frame sequence; it does not reflect sweep
+  progress while a long run is under way.
 - `thundera init` writes a static template; it doesn't crawl the app to suggest
   surfaces.
 
