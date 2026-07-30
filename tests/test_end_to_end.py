@@ -164,3 +164,78 @@ def test_cli_unknown_surface_is_a_usage_error(site, tmp_path, capsys):
                  "--out", str(tmp_path / "run"), "-q"])
     assert code == 2
     assert "unknown surface" in capsys.readouterr().err
+
+
+# ── retries and flake settling ───────────────────────────────────────────────
+class FlakyOnceHandler(SimpleHTTPRequestHandler):
+    """404s /flaky.html the first time it is asked for, then serves it.
+
+    A deterministic stand-in for the real thing: `networkidle` never settling
+    on a polling app, or a click that misses because an animation was still
+    running.
+    """
+
+    seen: set = set()
+
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        if self.path == "/flaky.html":
+            if "hit" not in self.seen:
+                self.seen.add("hit")
+                self.send_error(500, "transient")
+                return
+            body = b"<!doctype html><title>ok</title><p>fine now</p>"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        return super().do_GET()
+
+
+@pytest.fixture
+def flaky_site(tmp_path):
+    FlakyOnceHandler.seen = set()
+    srv = ThreadingHTTPServer(
+        ("127.0.0.1", 0), partial(FlakyOnceHandler, directory=str(tmp_path))
+    )
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}"
+    srv.shutdown()
+
+
+def _flaky_cfg(base):
+    return Config.from_dict({"app": {"name": "f", "base": base, "paths": ["/flaky.html"]}})
+
+
+def test_without_retries_a_transient_failure_is_a_hard_error(flaky_site, tmp_path):
+    r = look(_flaky_cfg(flaky_site), out_dir=tmp_path / "r", engine="http",
+             make_montage=False, log=lambda *a: None)
+    assert r.exit_code == 1
+    assert r.summary["errors"] == 1
+
+
+def test_retries_demote_a_finding_that_does_not_reproduce(flaky_site, tmp_path):
+    r = look(_flaky_cfg(flaky_site), out_dir=tmp_path / "r", engine="http",
+             make_montage=False, retries=1, log=lambda *a: None)
+    finds = r.body["records"][0]["findings"]
+    assert len(finds) == 1
+    assert finds[0]["flaky"] is True
+    assert finds[0]["severity"] == "warn"          # demoted, never deleted
+    assert "did not reproduce" in finds[0]["detail"]
+    assert r.summary["errors"] == 0 and r.summary["warnings"] == 1
+    assert r.exit_code == 0
+
+
+def test_a_reproducible_error_survives_retries(site, tmp_path):
+    """The retry must not launder a real failure into a warning."""
+    cfg = Config.from_dict({"app": {"name": "t", "base": site, "paths": ["/gone.html"]}})
+    r = look(cfg, out_dir=tmp_path / "r", engine="http", make_montage=False,
+             retries=2, log=lambda *a: None)
+    finds = r.body["records"][0]["findings"]
+    assert finds[0]["severity"] == "error"
+    assert "flaky" not in finds[0]
+    assert r.exit_code == 1

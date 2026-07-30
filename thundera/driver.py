@@ -17,8 +17,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from .checks import COLLECT_JS, analyze
-from .config import Config, Surface, resolve_path
+from .checks import COLLECT_JS, analyze, unverified
+from .config import Config, Step, Surface, resolve_path
 
 
 def have_playwright() -> bool:
@@ -55,11 +55,18 @@ def sweep_browser(
     log=print,
     browser_path: str | None = None,
     timeout_ms: int = 25000,
+    only: set[tuple[str, str, str]] | None = None,
+    shots_subdir: str = "screenshots",
 ) -> list[dict]:
-    """Run the full matrix in Chromium. One record per page-view."""
+    """Run the full matrix in Chromium. One record per page-view.
+
+    `only` narrows the sweep to specific (surface, profile, viewport) triples —
+    used by the retry pass, which must re-run exactly the page-views that
+    failed and not the whole cross product they happen to span.
+    """
     from playwright.sync_api import sync_playwright
 
-    shots_dir = out_dir / "screenshots"
+    shots_dir = out_dir / shots_subdir
     shots_dir.mkdir(parents=True, exist_ok=True)
     records: list[dict] = []
 
@@ -76,11 +83,25 @@ def sweep_browser(
                     continue
                 seeds = {**cfg.seeds, **profile.seeds}
                 for vp in cfg.viewports:
+                    wanted = [
+                        s for s in surfaces
+                        if only is None or (s.key, profile.name, vp.label) in only
+                    ]
+                    if not wanted:
+                        continue
                     ctx = browser.new_context(
                         viewport={"width": vp.width, "height": vp.height},
                         device_scale_factor=vp.scale,
                         is_mobile=vp.mobile,
                     )
+                    if profile.headers:
+                        ctx.set_extra_http_headers(dict(profile.headers))
+                    if profile.cookies:
+                        # A cookie needs a scope; default it to the app origin
+                        # rather than making every config spell out a url.
+                        ctx.add_cookies([
+                            {"url": cfg.base, **c} for c in profile.cookies
+                        ])
                     if seeds:
                         # try/catch: some origins (file://, sandboxed) deny storage,
                         # and a seed failure must not abort the sweep.
@@ -108,7 +129,28 @@ def sweep_browser(
                     )
                     page.on("pageerror", lambda e: ev["pageerrors"].append(str(e)))
 
-                    for surf in surfaces:
+                    # Profile setup runs once for the whole context, before any
+                    # surface. Whatever it establishes — an uploaded save, a
+                    # logged-in session — persists across the navigations below.
+                    # If it fails, every record in this context is tainted: the
+                    # app was measured in the wrong state, and saying otherwise
+                    # would be the tool lying about what it looked at.
+                    profile_setup_failures: list[tuple[str, str]] = []
+                    if profile.setup:
+                        try:
+                            page.goto(cfg.base, wait_until="networkidle",
+                                      timeout=timeout_ms)
+                        except Exception:
+                            pass          # measure anyway; steps may still apply
+                        profile_setup_failures, setup_notes = run_steps(
+                            page, profile.setup, cfg.base
+                        )
+                        for note in setup_notes:
+                            log(f"  [{profile.name}/{vp.label}] setup: {note}")
+                        for k in ev:
+                            ev[k].clear()   # setup noise is not a surface's fault
+
+                    for surf in wanted:
                         rec = _record(cfg, surf, profile.name, vp.label, params)
                         if rec.get("skipped"):
                             records.append(rec)
@@ -122,6 +164,14 @@ def sweep_browser(
                             # polling/SSE; measure anyway and note it.
                             rec["nav_note"] = f"{type(e).__name__} (continuing after settle)"
                         page.wait_for_timeout(surf.settle_ms)
+                        # Surface setup establishes the precondition; pre_clicks
+                        # then navigate to the view. Order matters.
+                        setup_failures = list(profile_setup_failures)
+                        if surf.setup:
+                            fails, notes = run_steps(page, surf.setup, cfg.base)
+                            setup_failures += fails
+                            if notes:
+                                rec.setdefault("setup_notes", []).extend(notes)
                         click_failures: list[tuple[str, str]] = []
                         for raw_sel in surf.pre_clicks:
                             optional = raw_sel.startswith("?")
@@ -157,8 +207,12 @@ def sweep_browser(
                             severity=cfg.severity,
                             net_ignore=cfg.net_ignore,
                             click_failures=click_failures,
+                            setup_failures=setup_failures,
                         )
                         rec["inventory"] = raw.get("inventory", {})
+                        skipped_checks = unverified(raw)
+                        if skipped_checks:
+                            rec["unverified"] = skipped_checks
                         shot = shots_dir / f"{surf.key}__{profile.name}__{vp.label}.png"
                         try:
                             page.screenshot(path=str(shot), full_page=True)
@@ -171,6 +225,47 @@ def sweep_browser(
         finally:
             browser.close()
     return records
+
+
+def run_steps(
+    page, steps: tuple[Step, ...], base: str, *, timeout_ms: int = 5000
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """Execute precondition steps. Returns (failures, notes).
+
+    Never raises: a step that fails is reported, and the sweep continues so the
+    screenshot still shows what the page actually looked like. Required
+    failures come back in `failures` and become `setup_failed` errors.
+    """
+    failures: list[tuple[str, str]] = []
+    notes: list[str] = []
+    for step in steps:
+        what = step.describe()
+        try:
+            if step.kind == "click":
+                page.click(step.value, timeout=timeout_ms)
+                page.wait_for_timeout(500)
+            elif step.kind == "wait_for":
+                page.wait_for_selector(step.value, timeout=timeout_ms)
+            elif step.kind == "fill":
+                page.fill(step.value["selector"], step.value["text"], timeout=timeout_ms)
+            elif step.kind == "upload":
+                page.set_input_files(
+                    step.value["selector"], step.value["path"], timeout=timeout_ms
+                )
+                page.wait_for_timeout(800)
+            elif step.kind == "eval":
+                page.evaluate(step.value)
+            elif step.kind == "goto":
+                page.goto(f"{base}{step.value}", wait_until="networkidle",
+                          timeout=timeout_ms * 4)
+        except Exception as e:
+            why = _click_reason(e)
+            if step.optional:
+                notes.append(f"{what}: skipped (optional) — {why}")
+                continue
+            failures.append((what, why))
+            notes.append(f"{what}: {why}")
+    return failures, notes
 
 
 def _click_reason(e: Exception) -> str:
@@ -192,12 +287,17 @@ def _verdict(rec: dict) -> str:
 
 
 # ── http engine (no browser required) ────────────────────────────────────────
-def sweep_http(cfg: Config, params: dict, out_dir: Path, *, log=print, timeout: float = 15.0) -> list[dict]:
+def sweep_http(
+    cfg: Config, params: dict, out_dir: Path, *, log=print, timeout: float = 15.0,
+    only: set[tuple[str, str, str]] | None = None, shots_subdir: str = "screenshots",
+) -> list[dict]:
     """Status codes only. Every surface once — viewport/profile are meaningless
     without a renderer, so the matrix collapses to one row per surface."""
     records: list[dict] = []
     vp = cfg.viewports[0].label if cfg.viewports else "http"
     for surf in cfg.surfaces:
+        if only is not None and (surf.key, "http", vp) not in only:
+            continue
         rec = _record(cfg, surf, "http", vp, params)
         rec["engine_note"] = "status-code only (no browser available)"
         if rec.get("skipped"):

@@ -68,7 +68,18 @@ def test_summarize_counts_views_and_findings():
     s = summarize([rec("a", [ERR, WARN]), rec("b", [WARN]), rec("c", []),
                    rec("d", [], skipped="no param")])
     assert s == {"page_views": 4, "clean": 1, "with_warnings": 1, "with_errors": 1,
-                 "skipped": 1, "errors": 1, "warnings": 2}
+                 "skipped": 1, "errors": 1, "warnings": 2, "unverified": 0}
+
+
+def test_summarize_totals_what_could_not_be_judged():
+    """A clean run that checked nothing must not read as a clean run."""
+    s = summarize([
+        rec("a", [], unverified={"contrast": 3}),
+        rec("b", [], unverified={"contrast": 1}),
+        rec("c", []),
+    ])
+    assert s["unverified"] == 4
+    assert s["clean"] == 3 and s["errors"] == 0     # abstentions are not failures
 
 
 def test_exit_code_gates_on_errors_only_unless_asked():

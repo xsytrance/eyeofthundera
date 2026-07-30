@@ -11,6 +11,7 @@ work against any URL on earth.
 """
 from __future__ import annotations
 
+import os
 import re
 import tomllib
 from dataclasses import dataclass, field, replace
@@ -18,6 +19,13 @@ from pathlib import Path
 from typing import Any
 
 CONFIG_NAMES = ("thundera.toml", ".thundera.toml")
+
+# Setup verbs. A step is a single-key table: { click = "#go" }. Kept small on
+# purpose — this is a way to reach a state, not a scripting language. Anything
+# that wants a real script wants `eval`.
+STEP_KINDS = ("click", "fill", "upload", "wait_for", "eval", "goto")
+
+_ENVVAR = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 # Viewports used when a config declares none. Mobile first, then desktop —
 # most layout sins show up at 390px.
@@ -43,15 +51,41 @@ class Viewport:
 
 
 @dataclass(frozen=True)
+class Step:
+    """One precondition action, run in the page before measuring.
+
+    `kind` is one of STEP_KINDS; `value` is a string for click/wait_for/eval/goto
+    and a dict for fill/upload. `optional` mirrors the `?` prefix on pre_clicks —
+    a step that is allowed not to apply on this viewport.
+    """
+
+    kind: str
+    value: Any
+    optional: bool = False
+
+    def describe(self) -> str:
+        v = self.value if isinstance(self.value, str) else dict(self.value)
+        return f"{self.kind} {v}"
+
+
+@dataclass(frozen=True)
 class Profile:
     """A named variant of the same app — a theme, a locale, a logged-in state.
 
     `seeds` are localStorage key/values planted before first paint, which is how
-    you put an app into a given state without driving its UI.
+    you put an app into a given state without driving its UI. When localStorage
+    isn't enough — a save file to upload, a session cookie, an auth header —
+    `setup`, `cookies` and `headers` carry the rest.
     """
 
     name: str
     seeds: dict[str, str] = field(default_factory=dict)
+    # Run once per browser context, before any surface is visited. State that
+    # lands in localStorage/IndexedDB or a server session persists across the
+    # per-surface navigations that follow.
+    setup: tuple[Step, ...] = ()
+    cookies: tuple[dict, ...] = ()
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -69,6 +103,11 @@ class Surface:
     # was never reached and that is reported as an error.
     pre_clicks: tuple[str, ...] = ()
     profiles: tuple[str, ...] | None = None   # None = every profile
+    # Steps to reach this surface's precondition, run after load+settle and
+    # before pre_clicks: setup establishes the state, pre_clicks navigates to
+    # the view. A failed required step is an error, for the same reason a
+    # failed required pre_click is — the surface was never actually reached.
+    setup: tuple[Step, ...] = ()
 
     def wants_profile(self, name: str) -> bool:
         return self.profiles is None or name in self.profiles
@@ -153,12 +192,25 @@ class Config:
             for v in raw.get("viewports", [])
         ) or tuple(Viewport(**v) for v in DEFAULT_VIEWPORTS)
 
+        base_dir = source.parent if source is not None else None
         profiles = tuple(
-            Profile(name=p["name"], seeds={k: str(v) for k, v in (p.get("seeds") or {}).items()})
+            Profile(
+                name=p["name"],
+                seeds={
+                    k: expand_env(str(v), f"profile {p['name']!r} seed {k!r}")
+                    for k, v in (p.get("seeds") or {}).items()
+                },
+                setup=_read_steps(p.get("setup"), f"profile {p.get('name', '?')!r}", base_dir),
+                cookies=_read_cookies(p.get("cookies"), f"profile {p.get('name', '?')!r}"),
+                headers={
+                    str(k): expand_env(str(v), f"profile {p.get('name', '?')!r} header {k!r}")
+                    for k, v in (p.get("headers") or {}).items()
+                },
+            )
             for p in raw.get("profiles", [])
         ) or (Profile("default"),)
 
-        surfaces = _read_surfaces(raw, routing)
+        surfaces = _read_surfaces(raw, routing, base_dir)
         if not surfaces:
             raise ConfigError(
                 "config declares no surfaces — add [[surfaces]] entries, or "
@@ -214,8 +266,14 @@ class Config:
             base=str(app.get("base", "http://127.0.0.1:8000")).rstrip("/"),
             routing=routing,
             discovery=disc,
-            params={k: str(v) for k, v in (raw.get("params") or {}).items()},
-            seeds={k: str(v) for k, v in (raw.get("seeds") or {}).items()},
+            params={
+                k: expand_env(str(v), f"param {k!r}")
+                for k, v in (raw.get("params") or {}).items()
+            },
+            seeds={
+                k: expand_env(str(v), f"seed {k!r}")
+                for k, v in (raw.get("seeds") or {}).items()
+            },
             viewports=viewports,
             profiles=profiles,
             surfaces=surfaces,
@@ -266,13 +324,108 @@ class Config:
         )
 
 
+def expand_env(value: str, where: str) -> str:
+    """Substitute ${VAR} from the environment.
+
+    Exists so a token never has to be committed to a thundera.toml. An unset
+    variable is a hard error: silently sending an empty Authorization header
+    would produce a sweep of 401s reported as the app's fault.
+    """
+    missing: list[str] = []
+
+    def sub(m: re.Match) -> str:
+        val = os.environ.get(m.group(1))
+        if val is None:
+            missing.append(m.group(1))
+            return ""
+        return val
+
+    out = _ENVVAR.sub(sub, value)
+    if missing:
+        raise ConfigError(
+            f"{where}: environment variable(s) {', '.join('${' + m + '}' for m in missing)} "
+            f"are not set"
+        )
+    return out
+
+
+def _read_steps(raw: Any, where: str, base_dir: Path | None) -> tuple[Step, ...]:
+    """Parse a `setup = [...]` list. Each entry is a single-key table."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ConfigError(f"{where}: setup must be a list of steps")
+    steps: list[Step] = []
+    for i, entry in enumerate(raw):
+        if not isinstance(entry, dict) or len(entry) != 1:
+            raise ConfigError(
+                f"{where}: step {i + 1} must be a table with exactly one key "
+                f"(one of {', '.join(STEP_KINDS)})"
+            )
+        [(kind, value)] = entry.items()
+        if kind not in STEP_KINDS:
+            raise ConfigError(
+                f"{where}: step {i + 1} has unknown action {kind!r} "
+                f"(known: {', '.join(STEP_KINDS)})"
+            )
+        optional = False
+        if kind in ("click", "wait_for", "eval", "goto"):
+            if not isinstance(value, str):
+                raise ConfigError(f"{where}: step {i + 1} '{kind}' takes a string")
+            if kind in ("click", "wait_for") and value.startswith("?"):
+                optional, value = True, value[1:]
+        elif kind == "fill":
+            if not isinstance(value, dict) or "selector" not in value or "text" not in value:
+                raise ConfigError(
+                    f"{where}: step {i + 1} 'fill' needs {{ selector = ..., text = ... }}"
+                )
+            value = {"selector": str(value["selector"]),
+                     "text": expand_env(str(value["text"]), f"{where} step {i + 1}")}
+        elif kind == "upload":
+            if not isinstance(value, dict) or "selector" not in value or "path" not in value:
+                raise ConfigError(
+                    f"{where}: step {i + 1} 'upload' needs {{ selector = ..., path = ... }}"
+                )
+            p = Path(str(value["path"]))
+            if not p.is_absolute() and base_dir is not None:
+                p = base_dir / p
+            # Fail now, loudly, rather than mid-sweep: a fixture that isn't
+            # there means every surface behind it would be measured in the
+            # wrong state.
+            if not p.is_file():
+                raise ConfigError(
+                    f"{where}: step {i + 1} 'upload' file not found: {p}"
+                )
+            value = {"selector": str(value["selector"]), "path": str(p)}
+        steps.append(Step(kind=kind, value=value, optional=optional))
+    return tuple(steps)
+
+
+def _read_cookies(raw: Any, where: str) -> tuple[dict, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ConfigError(f"{where}: cookies must be a list of tables")
+    out: list[dict] = []
+    for i, c in enumerate(raw):
+        if not isinstance(c, dict) or "name" not in c or "value" not in c:
+            raise ConfigError(f"{where}: cookie {i + 1} needs a name and a value")
+        cookie = {k: v for k, v in c.items()}
+        cookie["name"] = str(cookie["name"])
+        cookie["value"] = expand_env(str(cookie["value"]), f"{where} cookie {i + 1}")
+        out.append(cookie)
+    return tuple(out)
+
+
 def _reject_unknown(want: list[str], known: set[str], noun: str) -> None:
     bad = [w for w in want if w not in known]
     if bad:
         raise ConfigError(f"unknown {noun}(s): {', '.join(bad)} (known: {', '.join(sorted(known))})")
 
 
-def _read_surfaces(raw: dict[str, Any], routing: str) -> tuple[Surface, ...]:
+def _read_surfaces(
+    raw: dict[str, Any], routing: str, base_dir: Path | None = None
+) -> tuple[Surface, ...]:
     out: list[Surface] = []
     # Shorthand: app.paths = ["/", "/about"] — keys derived from the path.
     for path in raw.get("app", {}).get("paths", []):
@@ -294,6 +447,9 @@ def _read_surfaces(raw: dict[str, Any], routing: str) -> tuple[Surface, ...]:
                 inventory={k: str(v) for k, v in (s.get("inventory") or {}).items()},
                 pre_clicks=tuple(s.get("pre_clicks") or ()),
                 profiles=tuple(profiles) if profiles is not None else None,
+                setup=_read_steps(
+                    s.get("setup"), f"surface {s.get('key') or s['path']!r}", base_dir
+                ),
             )
         )
     return tuple(out)

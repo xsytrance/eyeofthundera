@@ -9,6 +9,134 @@ earlier decision was reversed, add a new entry saying so.
 
 ---
 
+## 2026-07-29 (fourth session) — The truth pass
+
+**What:** Three changes, chosen from a worked-up list of twelve. Rod picked the
+cut: fix what is actually wrong before adding anything new. 69 → 97 tests.
+
+### 1. The contrast compositor was reading the wrong pixels
+
+The known false-positive class from the last session is fixed, and the root
+cause was smaller and worse than the handoff guessed.
+
+`document.elementsFromPoint()` returns the hit-test stack **topmost first**. The
+layer walk did this:
+
+```js
+for (const n of chain) {
+  if (n === el || el.contains(n)) continue;   // self / children
+  ...treat n as a background layer...
+}
+```
+
+Everything that was not the element or its descendant was treated as background
+— including the elements painted **above** it. A `position: fixed` bottom bar
+covering text at scroll 0 therefore *became* that text's background. The fix is
+one line: find the element's own index in the stack and composite only
+`chain.slice(idx + 1)`.
+
+**What surprised us:** the bug did not only invent findings, it also *hid* them.
+White-on-black under a white bar reported as "white on white, 1:1" — but
+dark-grey-on-black under the same bar read as dark-grey-on-*white*, which passes
+WCAG comfortably and was silently dropped. Both directions are covered by tests
+now; reintroducing the one-line bug fails both.
+
+Verified against the live app: undertale-vera at m390 went from 7 contrast
+warnings to 0, and all 7 were the artifact. ember-pro's genuine
+`span#power-status > a — 2.2:1` still reports (at both viewports now), which is
+the canary that the fix did not simply blind the check.
+
+**A second case, found while verifying.** 41 elements had no hit-test result at
+all — they are clipped by a scroll container, so the point belongs to whatever
+*is* painted there. The first draft abstained on those. That was worse than
+necessary: the ancestor chain is exactly what sits behind the text in normal
+flow, and a fixed overlay can never be an ancestor. Falling back to it recovered
+all 41 with correct backgrounds.
+
+**This is the first deliberate edit to `COLLECT_JS`,** which guardrail 5 says is
+carried over unchanged. That rule exists to stop thresholds being loosened to
+quiet a noisy project. No threshold moved here — the collector was reading the
+wrong input — and `docs/HANDOFF.md` proposed this exact fix as one of two
+candidates. The other candidate (`scrollIntoView` then re-sample) was rejected:
+it mutates page state mid-measure, so the screenshot would no longer show what
+was measured.
+
+### 2. A third outcome: "I could not tell"
+
+The collector has always skipped text on gradients and background images —
+guessing at pixels it cannot read would be a lie. But it skipped them
+*silently*, which is indistinguishable from a pass. A page whose text all sat on
+gradients reported "no contrast problems" having checked nothing.
+
+Now every abstention is counted: `rec.unverified` per page-view, summed into
+`summary.unverified`. The finding kind `obscured` carries the per-element reason
+and defaults to `"off"` — one decorative hero can produce a dozen and none is a
+defect — but **the count is reported regardless of the severity setting**, so
+switching the finding off hides the noise without hiding the fact. undertale-vera
+reports 93 of these; that number was always true, it was just never said.
+
+Three outcomes now, not two: pass, fail, and *I could not tell*. Additive, so
+`schema_version` stays 1.
+
+### 3. Preconditions — the Eye could not see most of its flagship consumer
+
+`examples/undertale-vera.toml` carried a note that seven views (council,
+timeline, journal, constellation, chronicle, judgment, reports) bounce to the
+saves view unless a save has been read, "so they are not listed here — add them
+once a save is seeded." Seeds only reach `localStorage`, and what those views
+need is a **file upload**. So 7 of 16 views were permanently invisible, and the
+config said so in a comment nobody had actioned.
+
+`setup` steps fix that: `click`, `fill`, `upload`, `wait_for`, `eval`, `goto`,
+with the same `?` optional prefix `pre_clicks` uses. Profile-level setup runs
+once per browser context (state persists across the navigations that follow);
+surface-level runs after load and before `pre_clicks` — setup establishes the
+state, `pre_clicks` navigates to the view.
+
+Per-profile `cookies` and `headers` came along with it, because ember-pro's
+known contrast bug only appears on "locked" shared instances and that is
+server-side state a `localStorage` seed cannot reach.
+
+A failed required step is `setup_failed`, an **error**, for exactly the reason
+`pre_click_failed` is. A failed *profile-level* step taints every record in that
+context — one bad precondition must not let nine surfaces report clean.
+
+`${VAR}` expansion landed here too, so a token never has to be committed. An
+unset variable is a hard `ConfigError` rather than an empty string: a blank
+`Authorization` header produces a sweep of 401s that look like the app's fault.
+A missing `upload` fixture fails at config-load for the same reason — better
+than discovering it mid-sweep with nine surfaces already measured wrong.
+
+### 4. `--retries N`
+
+`networkidle` never settles on polling/SSE apps and clicks miss transiently. The
+retry re-runs **only** the page-views that errored, via an `only` allowlist of
+`(surface, profile, viewport)` triples — `cfg.select()` would have re-run the
+whole cross product those triples happen to span. An error that reproduces
+stands; one that does not is marked `"flaky": true` and demoted to `warn`.
+
+Demoted, **never deleted.** An error that comes and goes is still information —
+it means the app is unreliable, which is its own kind of bug. Silently dropping
+it would be the same class of lie as a silent pass. Retry screenshots go to
+`retry-N/` so the first run's evidence survives.
+
+### Also
+
+Stale metadata corrected: `CLAUDE.md` said 60 tests, `pyproject.toml`'s
+`Homepage` pointed at `eye-of-thundera` when the remote is `eyeofthundera`, and
+`README.md` advertised a PyPI install for a package that is not on PyPI. The
+README's config reference was also missing `[network]` and `[vision]`, both of
+which the reference example uses.
+
+**Left undone, deliberately:** the other nine of the twelve — a real
+accessibility pass, visual diffing, per-viewport `settle_ms`, multi-origin, a
+smarter `http` engine, perf budgets, `init --crawl`, waivers, and the MCP
+server. They are listed in `docs/HANDOFF.md` § *Next steps* with the reasoning
+intact. MCP stays after a third consumer, per VISION — the tool surface should
+be designed against real usage, not guessed at.
+
+---
+
 ## 2026-07-29 (later still) — First consumer: undertale-vera
 
 **What:** No change to `thundera/` at all. `undertale-vera` deleted its vendored

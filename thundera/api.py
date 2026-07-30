@@ -58,6 +58,44 @@ def fetch_discovery(cfg: Config, log=print) -> tuple[dict, dict]:
         }
 
 
+def _view_key(rec: dict) -> tuple[str, str, str]:
+    return (rec.get("surface", "?"), rec.get("profile", "?"), rec.get("viewport", "?"))
+
+
+def settle_flakes(records: list[dict], retry_records: list[dict], log=print) -> int:
+    """Reconcile a retry pass into the first run's records. Returns flakes found.
+
+    A finding that reproduced stands unchanged. One that did not is marked
+    `flaky` and demoted to a warning — never deleted. A vanished error is still
+    information: it means the app is unreliable, which is its own kind of bug,
+    and dropping it silently would be exactly the sort of lie this tool exists
+    to avoid.
+    """
+    from .report import finding_id
+
+    seen: dict[tuple[str, str, str], set[str]] = {}
+    for rec in retry_records:
+        seen[_view_key(rec)] = {finding_id(rec, f) for f in rec.get("findings", [])}
+
+    flakes = 0
+    for rec in records:
+        key = _view_key(rec)
+        if key not in seen:
+            continue                     # this page-view was not retried
+        for f in rec.get("findings", []):
+            if f.get("severity") != "error":
+                continue
+            if finding_id(rec, f) in seen[key]:
+                continue                 # reproduced — it is real
+            f["flaky"] = True
+            f["severity"] = "warn"
+            f["detail"] += " [did not reproduce on retry]"
+            flakes += 1
+    if flakes:
+        log(f"  {flakes} error(s) did not reproduce — demoted to warnings (flaky)")
+    return flakes
+
+
 def look(
     cfg: Config,
     *,
@@ -69,6 +107,7 @@ def look(
     markdown_path: str | Path | None = None,
     warn_as_error: bool = False,
     browser_path: str | None = None,
+    retries: int = 0,
     log=print,
 ) -> LookResult:
     """Sweep the app and return findings. The only function anything calls."""
@@ -99,6 +138,27 @@ def look(
     else:
         log("  (no browser — status codes only; install the [browser] extra for real sight)")
         records = driver.sweep_http(cfg, params, run_dir, log=log)
+
+    # ── retries ──────────────────────────────────────────────────────────────
+    # Re-run only the page-views that errored. `networkidle` never settles on
+    # apps with polling or SSE, and a click can miss transiently; one bad run
+    # should not be reported with the same confidence as a reproducible one.
+    for attempt in range(retries):
+        failed = {
+            _view_key(r) for r in records
+            if any(f.get("severity") == "error" for f in r.get("findings", []))
+        }
+        if not failed:
+            break
+        log(f"  retry {attempt + 1}/{retries}: re-running {len(failed)} failed page-view(s)")
+        sweep = driver.sweep_browser if chosen == "browser" else driver.sweep_http
+        kwargs = {"browser_path": browser_path} if chosen == "browser" else {}
+        retry_records = sweep(
+            cfg, params, run_dir, log=lambda *a: None, only=failed,
+            shots_subdir=f"retry-{attempt + 1}", **kwargs,
+        )
+        if not settle_flakes(records, retry_records, log=log):
+            break                        # everything reproduced; nothing to gain
 
     # ── vision (opt-in, sampled) ─────────────────────────────────────────────
     critiques: dict = {}

@@ -13,7 +13,7 @@ noisy surface — set `severity.<kind> = "off"` in that project's config instead
 from __future__ import annotations
 
 # Returns {brokenImgs, docOverflow, clippedText, rowMisalign, offCenter,
-#          tapTargets, contrast, spacing, inventory}
+#          tapTargets, contrast, obscured, spacing, inventory}
 COLLECT_JS = r"""
 (invSelectors) => {
   const vis = (el) => {
@@ -141,9 +141,13 @@ COLLECT_JS = r"""
     return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
   };
   const contrast = [];
+  // Elements whose contrast could NOT be determined, with the reason. A silent
+  // skip is indistinguishable from a pass, and this tool must never imply it
+  // checked something it didn't.
+  const obscured = [];
   const seenSel = new Set();
   for (const el of document.querySelectorAll('body *')) {
-    if (contrast.length >= 15) break;
+    if (contrast.length >= 15 && obscured.length >= 15) break;
     if (!vis(el)) continue;
     const hasText = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim().length > 2);
     if (!hasText) continue;
@@ -177,9 +181,28 @@ COLLECT_JS = r"""
       // In-viewport: composite the true hit-test stack (sees overlay siblings
       // and sticky bars). Off-viewport elementsFromPoint is meaningless, so
       // fall back to the ancestor chain — correct for normal document flow.
-      const chain = inViewport
-        ? document.elementsFromPoint(cx, cy)
-        : (() => { const a = []; for (let n = el.parentElement; n; n = n.parentElement) a.push(n); return a; })();
+      const ancestors = () => {
+        const a = [];
+        for (let n = el.parentElement; n; n = n.parentElement) a.push(n);
+        return a;
+      };
+      const rawChain = inViewport ? document.elementsFromPoint(cx, cy) : ancestors();
+      let chain = rawChain;
+      if (inViewport) {
+        // elementsFromPoint returns the stack topmost-first, so everything
+        // BEFORE el is painted ABOVE it and is emphatically not background.
+        // Walking the whole list composited a fixed bottom bar as the
+        // background of text sitting under it at scroll 0 — which is how
+        // legible white-on-black came to be reported as "white on white,
+        // 1:1". Slice at el and only composite what is genuinely beneath.
+        const idx = rawChain.findIndex(n => n === el || el.contains(n));
+        chain = idx === -1 ? ancestors() : rawChain.slice(idx + 1);
+        // idx === -1 means the hit test never reached el — it is clipped by a
+        // scroll container, or something opaque is over it. The stack we got
+        // belongs to whatever IS painted there, so it is not our background.
+        // The ancestor chain is: it is what sits behind this text in normal
+        // flow, and a fixed overlay can never be an ancestor.
+      }
       for (const n of chain) {
         if (n === el || el.contains(n)) continue;   // self / children already handled
         const ns = getComputedStyle(n);
@@ -206,7 +229,18 @@ COLLECT_JS = r"""
       }
       bg = acc;
     }
-    if (gradient || !bg) continue;
+    if (gradient || !bg) {
+      // Abstain, but say so. These were silent skips before: the collector
+      // simply moved on, and a page whose text all sat on gradients reported
+      // "no contrast problems" having checked nothing.
+      if (obscured.length < 15) {
+        obscured.push({ sel: path(el),
+          why: gradient ? 'background is a gradient or image — pixels unknown'
+                        : 'no solid background could be resolved',
+          text: el.textContent.trim().slice(0, 32) });
+      }
+      continue;
+    }
     const L1 = lum(fg), L2 = lum(bg);
     const ratio = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
     const px = parseFloat(s.fontSize);
@@ -216,6 +250,7 @@ COLLECT_JS = r"""
       const sel = path(el);
       if (seenSel.has(sel)) continue;
       seenSel.add(sel);
+      if (contrast.length >= 15) continue;
       contrast.push({ sel, ratio: round(ratio), need, px: round(px),
                       fg: s.color, bg: `rgb(${Math.round(bg.r)}, ${Math.round(bg.g)}, ${Math.round(bg.b)})`,
                       text: el.textContent.trim().slice(0, 32) });
@@ -252,7 +287,7 @@ COLLECT_JS = r"""
     }
   }
 
-  return { brokenImgs, docOverflow, clippedText, rowMisalign, offCenter, tapTargets, contrast, spacing, inventory };
+  return { brokenImgs, docOverflow, clippedText, rowMisalign, offCenter, tapTargets, contrast, obscured, spacing, inventory };
 }
 """
 
@@ -271,10 +306,21 @@ DEFAULT_SEVERITY: dict[str, str] = {
     # worse than a broken image, so it is an error by default: a silent pass
     # here would be the tool lying about what it looked at.
     "pre_click_failed": "error",
+    # Same reasoning as pre_click_failed: a precondition that did not apply
+    # means the app was measured in the wrong state. The screenshot is still
+    # taken — it shows what really happened — but nothing here counts as clean.
+    "setup_failed": "error",
     # Contrast reports composited fg/bg pairs for the polish worklist; it stays
     # warn by default until the hit-test model has proven itself against every
     # off-canvas/transform case (gate on it with --warn-as-error).
     "contrast": "warn",
+    # "I looked and could not tell" — a text node whose background is a gradient,
+    # an image, or an unresolvable hit-test stack. Off by default because a
+    # single decorative hero can produce a dozen of them and none is a defect;
+    # the count is always reported in `summary.unverified` regardless, so the
+    # abstention is never invisible. Turn it on with severity.obscured = "warn"
+    # when you want the list of what the Eye could not judge.
+    "obscured": "off",
     "clipped_text": "warn",
     "row_misalign": "warn",
     "off_center": "warn",
@@ -292,6 +338,17 @@ DEFAULT_NET_IGNORE = ("favicon",)
 MOBILE_ONLY = frozenset({"tap_target"})
 
 
+def unverified(raw: dict) -> dict:
+    """What the collector looked at but could not judge, by check.
+
+    Reported independently of `severity.obscured`, so that turning the finding
+    off hides the noise without hiding the fact that something went unchecked.
+    An agent reading the JSON can always ask "how much did you actually see?"
+    """
+    counts = {"contrast": len(raw.get("obscured", []))}
+    return {k: v for k, v in counts.items() if v}
+
+
 def analyze(
     raw: dict,
     console: list,
@@ -302,6 +359,7 @@ def analyze(
     severity: dict[str, str] | None = None,
     net_ignore: tuple[str, ...] = DEFAULT_NET_IGNORE,
     click_failures: list | None = None,
+    setup_failures: list | None = None,
 ) -> list[dict]:
     """Turn raw in-page measurements + captured events into findings."""
     sev = {**DEFAULT_SEVERITY, **(severity or {})}
@@ -315,6 +373,8 @@ def analyze(
             return
         found.append({"kind": kind, "severity": s, "detail": detail, "anchor": anchor or detail})
 
+    for what, why in setup_failures or []:
+        add("setup_failed", f"{what} — {why}", what)
     for sel, why in click_failures or []:
         add("pre_click_failed", f"{sel} — {why}", sel)
     for src in raw.get("brokenImgs", []):
@@ -334,6 +394,9 @@ def analyze(
             f"{c['sel']} — {c['ratio']}:1 (needs {c['need']}:1) "
             f"[{c.get('fg')} on {c.get('bg')}] “{c['text']}”",
             c["sel"])
+    for o in raw.get("obscured", []):
+        add("obscured", f"{o['sel']} — contrast not checked: {o['why']} “{o.get('text', '')}”",
+            o["sel"])
     for c in raw.get("clippedText", []):
         add("clipped_text", f"{c['sel']} clipped by {c['by']}px “{c['text']}”", c["sel"])
     for r in raw.get("rowMisalign", []):

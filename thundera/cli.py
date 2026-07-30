@@ -134,6 +134,7 @@ def cmd_look(args, parser) -> int:
         markdown_path=args.report,
         warn_as_error=args.warn_as_error,
         browser_path=args.browser,
+        retries=args.retries,
         log=log,
     )
 
@@ -249,6 +250,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="record this run as the baseline (default .thundera/baseline.json)")
     look_p.add_argument("--fail-on-new", action="store_true",
                         help="exit 1 on any new finding vs baseline, warnings included")
+    look_p.add_argument("--retries", type=int, default=0, metavar="N",
+                        help="re-run failed page-views N times; errors that don't "
+                             "reproduce are demoted to warnings and marked flaky")
     look_p.add_argument("--warn-as-error", action="store_true")
     look_p.add_argument("--no-montage", action="store_true")
     look_p.add_argument("--no-animation", action="store_true",

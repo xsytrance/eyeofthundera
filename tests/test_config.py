@@ -156,3 +156,99 @@ def test_resolve_path_fills_and_reports():
     assert resolve_path(s, {"project_id": "5"}) == ("/project/5", "")
     path, why = resolve_path(s, {})
     assert path is None and "{project_id}" in why
+
+
+# ── setup steps, cookies, headers ────────────────────────────────────────────
+def surf_cfg(**surface):
+    """One explicit surface, no `paths` shorthand competing for index 0."""
+    return Config.from_dict({
+        "app": {"name": "t", "base": "http://x"},
+        "surfaces": [{"key": "s", "path": "/", **surface}],
+    })
+
+
+def test_setup_steps_parse_for_every_verb(tmp_path):
+    f = tmp_path / "save.dat"
+    f.write_text("x")
+    c = surf_cfg(setup=[
+        {"click": "#a"},
+        {"wait_for": "#b"},
+        {"fill": {"selector": "#c", "text": "hi"}},
+        {"upload": {"selector": "#d", "path": str(f)}},
+        {"eval": "window.x = 1"},
+        {"goto": "/elsewhere"},
+    ])
+    kinds = [s.kind for s in c.surfaces[0].setup]
+    assert kinds == ["click", "wait_for", "fill", "upload", "eval", "goto"]
+
+
+def test_a_question_mark_marks_a_setup_step_optional():
+    c = surf_cfg(setup=[{"click": "?#maybe"}, {"click": "#always"}])
+    a, b = c.surfaces[0].setup
+    assert a.optional and a.value == "#maybe"
+    assert not b.optional
+
+
+def test_unknown_setup_verb_is_rejected():
+    with pytest.raises(ConfigError, match="unknown action 'sing'"):
+        cfg(surfaces=[{"key": "s", "path": "/", "setup": [{"sing": "#a"}]}])
+
+
+def test_a_setup_step_needs_exactly_one_action():
+    with pytest.raises(ConfigError, match="exactly one key"):
+        cfg(surfaces=[{"key": "s", "path": "/",
+                       "setup": [{"click": "#a", "wait_for": "#b"}]}])
+
+
+def test_a_missing_upload_fixture_fails_at_config_load():
+    """Loudly, and now — not mid-sweep with nine surfaces already measured."""
+    with pytest.raises(ConfigError, match="file not found"):
+        cfg(surfaces=[{"key": "s", "path": "/", "setup": [
+            {"upload": {"selector": "#f", "path": "/no/such/save.dat"}}]}])
+
+
+def test_upload_paths_resolve_relative_to_the_config_file(tmp_path):
+    (tmp_path / "fixtures").mkdir()
+    (tmp_path / "fixtures" / "save.dat").write_text("x")
+    (tmp_path / "thundera.toml").write_text(
+        '[app]\nbase = "http://x"\n\n'
+        '[[surfaces]]\nkey = "s"\npath = "/"\n'
+        'setup = [{ upload = { selector = "#f", path = "fixtures/save.dat" } }]\n'
+    )
+    c = Config.load(tmp_path / "thundera.toml")
+    assert c.surfaces[0].setup[0].value["path"] == str(tmp_path / "fixtures" / "save.dat")
+
+
+def test_fill_and_upload_require_their_keys():
+    with pytest.raises(ConfigError, match="'fill' needs"):
+        cfg(surfaces=[{"key": "s", "path": "/", "setup": [{"fill": {"selector": "#c"}}]}])
+
+
+def test_profile_cookies_and_headers_round_trip():
+    c = cfg(profiles=[{"name": "p", "cookies": [{"name": "sess", "value": "abc"}],
+                       "headers": {"X-Test": "1"}}])
+    assert c.profiles[0].cookies[0]["value"] == "abc"
+    assert c.profiles[0].headers == {"X-Test": "1"}
+
+
+def test_a_cookie_needs_a_name_and_a_value():
+    with pytest.raises(ConfigError, match="needs a name and a value"):
+        cfg(profiles=[{"name": "p", "cookies": [{"name": "sess"}]}])
+
+
+# ── ${ENV} interpolation ─────────────────────────────────────────────────────
+def test_env_vars_expand_in_headers_cookies_and_seeds(monkeypatch):
+    monkeypatch.setenv("TOK", "s3cret")
+    c = cfg(profiles=[{"name": "p", "headers": {"Authorization": "Bearer ${TOK}"},
+                       "cookies": [{"name": "s", "value": "${TOK}"}]}],
+            seeds={"token": "${TOK}"})
+    assert c.profiles[0].headers["Authorization"] == "Bearer s3cret"
+    assert c.profiles[0].cookies[0]["value"] == "s3cret"
+    assert c.seeds["token"] == "s3cret"
+
+
+def test_an_unset_env_var_is_an_error_not_an_empty_string(monkeypatch):
+    """Sending an empty Authorization header would blame the app for the 401s."""
+    monkeypatch.delenv("NOPE_NOT_SET", raising=False)
+    with pytest.raises(ConfigError, match=r"\$\{NOPE_NOT_SET\}"):
+        cfg(seeds={"token": "${NOPE_NOT_SET}"})

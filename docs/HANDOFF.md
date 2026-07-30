@@ -1,6 +1,6 @@
 # Handoff
 
-**Last updated:** 2026-07-29 (third session) · **Version:** 0.1.0 · **State:** working, published, and adopted by its first consumer — one vendored copy deleted, three to go
+**Last updated:** 2026-07-29 (fourth session) · **Version:** 0.1.0 · **State:** working, published, adopted by its first consumer — one vendored copy deleted, three to go. The known contrast false-positive is fixed.
 
 > This is the living state document. If you are picking this project up cold —
 > human or agent — read this file and `docs/VISION.md`, in that order, and you
@@ -23,7 +23,7 @@ existed as four diverging copies across Rod's projects.
 
 | | |
 |---|---|
-| **Works** | Yes. 69/69 tests green. Used on three live apps (:9092, :9095, :9096). |
+| **Works** | Yes. 97/97 tests green. Used on three live apps (:9092, :9095, :9096). |
 | **Published** | `github.com/xsytrance/eyeofthundera` (private) |
 | **Consumed by** | **`undertale-vera`** — its `inspector.py` is deleted, its `thundera.toml` is committed. `ember-lite`, `ember-pro`, `fft-psx-vera` still carry copies. |
 | **Version** | 0.1.0, not on PyPI |
@@ -32,13 +32,19 @@ existed as four diverging copies across Rod's projects.
 ### What's proven
 
 - Zero-config sweep of an arbitrary URL (`thundera look http://host`)
-- Full config sweep — 8 surfaces × 2 viewports on undertale-vera
+- Full config sweep — 13 surfaces × 2 viewports on undertale-vera
 - Both engines (`browser` via Playwright, `http` via urllib)
 - Baseline round-trip stable across two live runs (0 new, 0 fixed — no jitter)
 - Montage renders correctly (verified by eye, 16 distinct views)
 - `examples/fft-psx-vera.toml` validates and reproduces the original registry
 - The ASCII eye animates in a real tty and stays entirely out of stdout
 - **It has found a bug nobody knew about** — see *First real catch* below
+- **The contrast compositor is now correct under fixed bars** — undertale-vera
+  m390 went 7 warnings → 0, all 7 having been the artifact, while ember-pro's
+  genuine 2.2:1 finding still reports. Both directions have tests.
+- Preconditions (`setup` steps, cookies, headers, `${VAR}`) reach states seeds
+  cannot — verified end to end with a real file upload
+- `--retries` demotes a non-reproducing error to a flaky warning, on both engines
 
 ### What is *not* proven
 
@@ -66,7 +72,7 @@ cd ~/eye-of-thundera
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/playwright install chromium      # if ~/.cache/ms-playwright is empty
-.venv/bin/python -m pytest -q              # expect 69 passed
+.venv/bin/python -m pytest -q              # expect 97 passed
 ```
 
 Then, with any web app running:
@@ -84,7 +90,7 @@ populated it, which is why the browser suite ran without a separate download.
 ```
 thundera/          the package — see docs/ARCHITECTURE.md for the module map
 examples/          real configs for undertale-vera and fft-psx-vera
-tests/             69 tests; test_browser.py auto-skips without Playwright
+tests/             97 tests; test_browser.py auto-skips without Playwright
 docs/VISION.md     why this exists, and the principles that are load-bearing
 docs/ARCHITECTURE.md   modules, data shapes, how {param} resolution works
 docs/BUILDLOG.md   append-only history — "why does it do that?" lives here
@@ -104,12 +110,25 @@ Each of these has a reason recorded in `docs/VISION.md` or `docs/BUILDLOG.md`.
    values that jitter. Key on it and every run reports the whole app as changed.
 4. **The core package has zero dependencies.** Playwright/Pillow are extras so
    the `http` engine works on a bare box. Don't add a hard dependency.
-5. **`COLLECT_JS` is carried over unchanged and stays that way.** It was tuned
-   against a real app over six themes. Noisy for your project? Set
-   `severity.<kind> = "off"` in *your* config.
+5. **`COLLECT_JS` thresholds do not move.** It was tuned against a real app over
+   six themes, and that tuning is most of the value. Noisy for your project? Set
+   `severity.<kind> = "off"` in *your* config. The collector has been edited
+   exactly once, on 2026-07-29, and only because it was reading the wrong input
+   — the contrast compositor treated elements painted *above* the text as its
+   background. A correctness fix is not a threshold change, and that distinction
+   is the whole rule.
 6. **`schema_version` is additive-only.** Agents parse this. Bump the version if
    you must change a key's meaning.
-7. **The Eye does not replace behavioural tests.** When migrating a consumer,
+7. **An abstention is reported, not hidden.** `summary.unverified` counts what
+   the collector declined to judge, and it is counted **regardless of whether
+   `obscured` is emitted as a finding**. Turning the finding off must hide the
+   noise, never the fact. Three outcomes: pass, fail, *I could not tell*.
+
+8. **A demoted flaky finding is still a finding.** `--retries` downgrades a
+   non-reproducing error to a warning; it never deletes it. An error that comes
+   and goes means the app is unreliable, which is its own bug.
+
+9. **The Eye does not replace behavioural tests.** When migrating a consumer,
    delete its *inspector*; do not touch its functional smoke, even when that
    smoke also drives Playwright. The Eye judges how a page looks and has no
    notion of a content assertion — "the route badge reads Pacifist", "chat
@@ -124,23 +143,25 @@ Each of these has a reason recorded in `docs/VISION.md` or `docs/BUILDLOG.md`.
 - `pre_clicks` are per-surface, not per-viewport. The `?` optional prefix covers
   the responsive-nav case; anything more complex needs duplicate surfaces.
 - No video/trace capture — you get the final screenshot, not the path there.
-- The `http` engine can't verify hash routes (it says so in `engine_note`).
-- Vision is Ollama-only.
+- The `http` engine can't verify hash routes (it says so in `engine_note`), and
+  does nothing beyond status codes even though stdlib `html.parser` would let it
+  check titles, `lang`, `alt`, and 404ing assets.
+- Vision is Ollama-only, and **still never exercised here**.
 - The eye animation is a fixed 6-frame sequence; it does not reflect sweep
   progress while a long run is under way.
 - `thundera init` writes a static template; it doesn't crawl the app to suggest
   surfaces.
-- **Contrast is measured at scroll 0, and a fixed bar poisons it.** Found on
-  undertale-vera 2026-07-29: 8 of 15 contrast findings at m390 were false. The
-  compositor uses `elementsFromPoint`, which is right for genuine overlays, but
-  text sitting *below the fold* under a fixed bottom nav samples the **bar's**
-  background, not the page's — so legible white-on-black text is reported as
-  "white on white, 1:1". Confirmed against the screenshots: the pages are fine.
-  Two candidate fixes, neither implemented: skip elements whose sample point is
-  covered by a `position: fixed` ancestor chain and report that as its own kind
-  (`obscured`), or scroll each element into view before sampling. Until then,
-  **treat a 1:1 same-colour contrast finding as suspect** — a real contrast bug
-  is usually a near-miss ratio, not a perfect tie.
+- No accessibility checks beyond contrast and tap targets, despite
+  "accessibility" being a package keyword.
+- The baseline compares *findings*, not pixels — a layout can break in ways no
+  named check catches.
+- **Contrast abstains on gradients and background images.** It always did; as of
+  this session it says so. `summary.unverified` counts them (undertale-vera
+  reports 93). That is not a defect count — it is the answer to "how much did
+  you actually see?". Set `severity.obscured = "warn"` for the per-element list.
+- Only one origin per config. `fft-psx-vera` serves its API on :7900 and its app
+  on :7901; the API origin is currently baked into `discovery.url`, so switching
+  environments means editing the TOML.
 
 ## Next steps, in order
 
@@ -148,15 +169,63 @@ Each of these has a reason recorded in `docs/VISION.md` or `docs/BUILDLOG.md`.
    `inspector.py` is deleted; `thundera.toml` + `requirements-qa.txt` are
    committed there. See the BUILDLOG entry for what the example config was
    missing (`commons`, and the four `/api/*` surfaces).
-2. **Then `ember-lite` / `ember-pro`** — their inspectors are byte-identical
-   copies of the file undertale-vera just deleted, so step 1 did the thinking.
-   Each needs its own `thundera.toml`; neither app has been surveyed for views
-   yet. Note the ember-pro contrast bug below is still unfixed.
-3. **Run the fft config for real** with its stack up. Expect and fix config bugs.
-4. **MCP server** — after step 3, so the tool surface is designed against real
-   usage. `api.look()` is the seam; this is an adapter, not a rewrite.
-5. Answer the open questions in `docs/VISION.md` (public vs private; is "eyes"
-   web-only; does it grow a memory).
+
+2. **Add the seven hidden undertale-vera views.** The blocker is gone: `setup`
+   steps can now upload a save. The config has always carried the note — the
+   NEEDS_SAVE views (council, timeline, journal, constellation, chronicle,
+   judgment, reports) bounce to the saves view unless a save has been read, so
+   they were never listed. **The Eye currently sees 9 of 16 views of its own
+   flagship consumer.** Needs a save fixture committed to `examples/fixtures/`
+   and a profile that uploads it. This is the cheapest large win available.
+
+3. **Then `ember-lite` / `ember-pro`.** Correction to an earlier draft of this
+   file: it said "neither app has been surveyed for views yet", implying a
+   survey is the work. It mostly isn't — both are forks of the undertale-vera
+   app, expose the **same fifteen `data-view` names**, and use the same `uv_*`
+   localStorage keys. Their `thundera.toml` is close to a copy with a different
+   `name` and `base`. Re-verify the saves opener and the drawer selector, keep
+   the four `/api/*` surfaces. ember-pro's own 2.2:1 contrast bug is still
+   unfixed in that repo, so it cannot be a clean baseline until it is.
+
+4. **Run the fft config for real** with its stack up. Expect and fix config
+   bugs. Note it is the one consumer needing two origins (see *Known gaps*), and
+   the only one that exercises `--vision`, which has never run in this package.
+
+5. **MCP server** — after step 4, so the tool surface is designed against real
+   usage. `api.look()` is the seam; this is an adapter, not a rewrite. Return
+   screenshots as MCP *image content*, not paths, so a vision-capable agent
+   actually sees the app.
+
+6. Answer the open questions in `docs/VISION.md` (public vs private; is "eyes"
+   web-only; does it grow a memory; who else runs it — that last one would
+   reorder step 5).
+
+### Deferred, with the reasoning intact
+
+Worked up in the fourth session as part of a list of twelve; Rod took the first
+three and deferred these. Roughly in order of value:
+
+- **A real accessibility pass** — a new `A11Y_JS` collector (alt text, form
+  labels, accessible names, heading order, `lang`, landmarks, `tabindex > 0`,
+  focus visibility). Deliberately a *new module* rather than an edit to
+  `COLLECT_JS`, so guardrail 5 stays intact and the pass can be disabled whole.
+- **Visual diffing** — store baseline screenshots, emit `visual_diff` above a
+  configurable changed-pixel ratio. Pillow extra; degrades to a stated skip.
+- **Per-viewport `settle_ms` / `pre_clicks`** — accept a table keyed by viewport
+  label as well as today's scalar.
+- **Multi-origin** — an `[origins]` table plus `--origin name=url`.
+- **A smarter `http` engine** — stdlib `html.parser` only, no new dependency.
+- **Perf/weight budgets** — `[budgets]`, off unless declared, because
+  environment-sensitive numbers should never fail a run nobody opted into.
+- **`init --crawl`** — scaffold a config by clicking through the app. Worth
+  noting this does *not* unblock ember (see step 3); it matters for the fifth
+  app and every one after.
+- **Waivers** — accept one finding on one surface with a reason and an expiry,
+  between the blunt instruments of `severity = "off"` and a whole baseline.
+- Cheaper: evidence capture (trace + DOM snapshot on error), parallel sweep
+  (`--concurrency`, one browser *per worker thread* — the sync dispatcher is
+  per-thread, so sharing a browser across threads is not safe), a self-contained
+  HTML report, run-dir pruning, a global `--deadline`.
 
 ## Gotchas discovered the hard way
 

@@ -70,15 +70,32 @@ parsing, stdout formatting, and exit-code translation.
 Config
 ├── name, base, routing ("path" | "hash")
 ├── viewports  : tuple[Viewport]   label, width, height, scale, mobile
-├── profiles   : tuple[Profile]    name, seeds{}          — themes/locales/states
+├── profiles   : tuple[Profile]    name, seeds{}, setup(), cookies(), headers{}
 ├── surfaces   : tuple[Surface]    key, path, group, settle_ms,
-│                                  inventory{}, pre_clicks(), profiles?
+│                                  inventory{}, pre_clicks(), profiles?, setup()
 ├── discovery  : Discovery | None  url, params{param: path-expression}
 ├── params     : dict              static {param} values (win over discovery)
 ├── seeds      : dict              localStorage under every profile
 ├── severity   : dict              kind → error|warn|off
 └── net_ignore : tuple             URL substrings whose 4xx/5xx is expected
+
+Step                               one precondition action
+├── kind      : str                click|fill|upload|wait_for|eval|goto
+├── value     : str | dict         selector, or {selector, text|path}
+└── optional  : bool               the "?" prefix — allowed not to apply
 ```
+
+`seeds` only reach localStorage. `Step` is how the Eye reaches states that need
+more than that — a save file uploaded, a session cookie, a logged-in profile.
+Profile-level `setup` runs **once per browser context** before any surface;
+surface-level `setup` runs per surface, after load and *before* `pre_clicks`
+(setup establishes the state, `pre_clicks` navigates to the view).
+
+`${VAR}` in any cookie, header, seed or param is expanded from the environment
+at config-load time. An unset variable raises `ConfigError` rather than
+substituting an empty string, and a missing `upload` fixture fails at load
+rather than mid-sweep — both so that a credential problem is never reported as
+the app's fault.
 
 Frozen throughout. `select()` and `with_base()` return narrowed copies rather
 than mutating — so a CLI filter can never corrupt the loaded config.
@@ -91,12 +108,15 @@ than mutating — so a CLI filter can never corrupt the loaded config.
   "path": "/", "url": "http://host/",
   "screenshot": "screenshots/home__dark__m390.png",
   "inventory": { "nav": {"x":0,"y":0,"w":390,"h":56,"font":"16px"} },
-  "findings": [ { "kind": "...", "severity": "...", "detail": "...", "anchor": "..." } ],
+  "findings": [ { "kind": "...", "severity": "...", "detail": "...", "anchor": "...",
+                  "flaky": true } ],       // flaky: did not reproduce on retry
 
   // any of these may appear:
   "skipped": "no value for {project_id}",     // never reached — and says why
+  "unverified": { "contrast": 4 },            // looked at, could not judge
   "nav_note": "TimeoutError (continuing after settle)",
   "click_notes": ["#menu: never appeared or never became clickable"],
+  "setup_notes": ["click #load: skipped (optional) — never appeared"],
   "measure_error": "...", "screenshot_error": "...",
   "status": 200, "engine_note": "status-code only (no browser available)"
 }
@@ -106,6 +126,13 @@ than mutating — so a CLI filter can never corrupt the loaded config.
 `anchor` is the stable identity (usually the CSS path) — **baseline diffing keys
 on `anchor`, never on `detail`.** Get that backwards and every run reports the
 whole app as changed.
+
+`unverified` counts measurements the collector *declined* to make — text whose
+background is a gradient or an image, where guessing at pixels would be a lie.
+It is summed into `summary.unverified`, and it is reported independently of
+`severity.obscured`, so switching the finding off hides the noise without hiding
+the fact that something went unchecked. Three outcomes, not two: pass, fail, and
+*I could not tell*.
 
 ### The findings body — the public contract
 
@@ -156,9 +183,17 @@ the route.
 
 ## The in-page collector
 
-`checks.COLLECT_JS` is one `page.evaluate()` returning raw measurements. It is
-**carried over unchanged** from the Vera Inspector, where it was tuned against
-six themes × two viewports of a real app. That tuning is most of the value here.
+`checks.COLLECT_JS` is one `page.evaluate()` returning raw measurements. It came
+over from the Vera Inspector, where it was tuned against six themes × two
+viewports of a real app. That tuning is most of the value here, and the standing
+rule is that thresholds do not move.
+
+It has been edited exactly once, on 2026-07-29, to fix the contrast compositor:
+`elementsFromPoint` returns the stack topmost-first, and the walk was treating
+elements painted *above* the text as its background. The stack is now sliced at
+the element's own position so only what is genuinely beneath it composites. See
+the build log for why that counted as a correctness fix rather than a threshold
+change.
 
 Notes for anyone tempted to edit it:
 
@@ -167,8 +202,12 @@ Notes for anyone tempted to edit it:
 - **Centering** only judges elements *alone* in their centering context. An icon
   flex-centered beside its text sibling is correctly off-centre.
 - **Contrast** composites the real paint stack via `elementsFromPoint`, so it
-  sees overlay siblings and translucent sticky bars an ancestor walk misses. It
-  **skips gradients and background images** rather than guessing at pixels.
+  sees overlay siblings and translucent scrims an ancestor walk misses — but
+  only the part of the stack *below* the element. When the hit test does not
+  reach the element at all (clipped by a scroll container), it falls back to the
+  ancestor chain, which is what sits behind the text in normal flow and can
+  never include a fixed overlay. It **skips gradients and background images**
+  rather than guessing at pixels, and every skip is counted in `unverified`.
 - **Tap targets** apply on mobile viewports only (`MOBILE_ONLY` in `checks.py`).
 
 If a threshold is noisy for one project, that project sets
@@ -178,10 +217,11 @@ If a threshold is noisy for one project, that project sets
 
 ```
 error   fails the run          broken_img, console_error, net_4xx, js_error,
-                               doc_overflow, pre_click_failed
+                               doc_overflow, pre_click_failed, setup_failed
 warn    reported only          contrast, clipped_text, row_misalign,
                                off_center, tap_target, spacing
-off     not emitted at all     (config only)
+off     not emitted at all     obscured (by default), plus anything config
+                               turns off
 ```
 
 ```
@@ -191,10 +231,16 @@ exit 1   errors present, or --warn-as-error with warnings,
 exit 2   usage or config error
 ```
 
-`pre_click_failed` is an **error** by design. If the click that opens a view
-misses, everything measured afterwards is some other page wearing that
-surface's name — and would otherwise report clean. See `docs/VISION.md`
-§ *Principles*.
+`pre_click_failed` and `setup_failed` are **errors** by design. If the click
+that opens a view misses, or the save that unlocks it never uploaded, everything
+measured afterwards is some other page wearing that surface's name — and would
+otherwise report clean. See `docs/VISION.md` § *Principles*.
+
+`--retries N` re-runs only the page-views that errored, via an `only` allowlist
+of `(surface, profile, viewport)` triples passed to the sweep. An error that
+reproduces stands; one that does not is marked `flaky` and demoted to `warn`.
+Demoted, never deleted — an error that comes and goes is still information.
+Retry screenshots go to `retry-N/` so first-run evidence survives.
 
 ## Testing
 

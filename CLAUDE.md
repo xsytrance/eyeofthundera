@@ -54,7 +54,7 @@ with none of the context.
 ## Commands
 
 ```bash
-.venv/bin/python -m pytest -q          # 60 tests; browser suite auto-skips
+.venv/bin/python -m pytest -q          # 97 tests; browser suite auto-skips
 .venv/bin/thundera check -c examples/undertale-vera.toml
 .venv/bin/thundera look http://127.0.0.1:9092
 python3 -m py_compile thundera/*.py    # quick syntax check

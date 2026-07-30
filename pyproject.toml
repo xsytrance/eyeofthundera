@@ -34,7 +34,7 @@ dev = ["playwright>=1.40", "pillow>=10.0", "pytest>=7.0"]
 thundera = "thundera.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/xsytrance/eye-of-thundera"
+Homepage = "https://github.com/xsytrance/eyeofthundera"
 
 [tool.setuptools.packages.find]
 include = ["thundera*"]

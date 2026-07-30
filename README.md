@@ -29,8 +29,10 @@ everyone who had only ever opened it on a desktop.
 
 ## Install
 
+Not on PyPI yet — install from the repo:
+
 ```bash
-pip install eye-of-thundera[all]
+pip install "eye-of-thundera[all] @ git+https://github.com/xsytrance/eyeofthundera.git"
 playwright install chromium
 ```
 
@@ -83,11 +85,12 @@ thundera look http://localhost:3000 --json -q
             "profiles": ["default"], "viewports": ["m390", "d1280"],
             "params": {}, "unresolved_params": {}, "duration_s": 6.2 },
   "summary": { "page_views": 2, "clean": 1, "with_warnings": 1, "with_errors": 0,
-               "skipped": 0, "errors": 0, "warnings": 3 },
+               "skipped": 0, "errors": 0, "warnings": 3, "unverified": 4 },
   "records": [
     { "surface": "home", "profile": "default", "viewport": "m390",
       "url": "http://localhost:3000/", "screenshot": "screenshots/home__default__m390.png",
       "inventory": { "nav": { "x": 0, "y": 0, "w": 390, "h": 56, "font": "16px" } },
+      "unverified": { "contrast": 4 },
       "findings": [
         { "kind": "tap_target", "severity": "warn",
           "detail": "button#refresh 23×19.2px “↻”", "anchor": "button#refresh" }
@@ -147,7 +150,9 @@ whenever stderr is not a terminal.
 | `js_error` | error | an uncaught exception |
 | `doc_overflow` | error | the page scrolls sideways |
 | `pre_click_failed` | error | a required click missed — **the surface was never reached** |
+| `setup_failed` | error | a required precondition didn't apply — **measured in the wrong state** |
 | `contrast` | warn | text below WCAG AA against its composited background |
+| `obscured` | off | text whose background could not be resolved — see below |
 | `clipped_text` | warn | `overflow:hidden` cutting real text off |
 | `row_misalign` | warn | same-tag siblings in a row with mismatched tops |
 | `off_center` | warn | an element claiming to be centred that isn't |
@@ -162,6 +167,26 @@ about one, turn it off in config rather than loosening the check for everyone:
 [severity]
 spacing = "off"
 contrast = "error"     # or promote it, once you're clean
+```
+
+### What it *couldn't* check
+
+Contrast needs to know the colour behind the text. Sometimes it can't: the
+background is a gradient or an image, and guessing at pixels is exactly the kind
+of lie this tool refuses to tell. Those elements are skipped — but never
+silently. Every run reports the total:
+
+```json
+"summary": { "clean": 13, "errors": 0, "warnings": 0, "unverified": 93 }
+```
+
+`unverified` is not a failure count. It is the answer to *"how much did you
+actually see?"*, which a run reporting zero warnings cannot otherwise tell you.
+For the per-element list and the reason each was skipped, promote the finding:
+
+```toml
+[severity]
+obscured = "warn"
 ```
 
 ## Baselines — "did my change break anything?"
@@ -214,6 +239,13 @@ mobile = true
 [[profiles]]               # themes, locales, logged-in states
 name = "dark"
 seeds = { theme = "dark" }             # localStorage, planted before first paint
+cookies = [{ name = "sess", value = "${SESSION}" }]
+headers = { Authorization = "Bearer ${API_TOKEN}" }
+setup = [                              # run once, before any surface
+  { click = "#load-save" },
+  { upload = { selector = "#save-file", path = "fixtures/pacifist.sav" } },
+  { wait_for = "[data-view='council']" },
+]
 
 [seeds]                    # applied under every profile
 welcome_seen = "1"
@@ -222,9 +254,18 @@ welcome_seen = "1"
 url = "http://127.0.0.1:8000/api/diag/ui-map"
 params.project_id = "entities.project_ids.0"
 params.character_id = "entities.character_ids.{project_id}.0"
+
+[network]                  # 4xx/5xx that is expected and must not fail a run
+ignore = ["favicon", "/api/optional-thing"]
+
+[severity]                 # "error" | "warn" | "off" per check kind
+spacing = "off"
+
+[vision]                   # surfaces worth the slow local-model critique
+sample = ["dashboard"]
 ```
 
-Three details worth knowing, because they are what make it work on real apps:
+Four details worth knowing, because they are what make it work on real apps:
 
 **Surfaces without URLs.** Plenty of SPAs switch views on a click, not a route.
 `pre_clicks` handles those: same path, different click.
@@ -247,6 +288,49 @@ mobile surfaces doing exactly that.
 time. A surface whose params can't be satisfied is *skipped with a stated
 reason* — never guessed at, never silently passed.
 
+**Preconditions, when localStorage isn't enough.** Some views only exist once
+the app is in a particular state — a save has been loaded, a session exists, a
+feature flag is on. `setup` reaches those states:
+
+| Step | Does |
+|---|---|
+| `click = "#go"` | clicks it (`?` prefix = optional) |
+| `fill = { selector, text }` | types into a field |
+| `upload = { selector, path }` | sets a file input |
+| `wait_for = "#thing"` | waits for a selector |
+| `eval = "js"` | runs JS in the page |
+| `goto = "/path"` | navigates |
+
+On a `[[profiles]]` block, `setup` runs **once per browser context**, before any
+surface — whatever it establishes persists across the navigations that follow.
+On a `[[surfaces]]` block it runs per surface, after load and *before*
+`pre_clicks`: setup establishes the state, `pre_clicks` navigates to the view.
+
+A required step that doesn't apply is a `setup_failed` **error**, for the same
+reason a missed required click is. If a profile-level step fails, every surface
+in that context is marked — one bad precondition must not let nine surfaces
+report clean.
+
+`${VAR}` in any cookie, header, seed or param is read from the environment, so
+a token never has to be committed. An unset variable is a hard error rather than
+an empty string, because a blank `Authorization` header produces a sweep of 401s
+that look like the app's fault.
+
+## Flaky runs
+
+`networkidle` never settles on apps with polling or SSE, and a click can miss
+because an animation was still running. `--retries N` re-runs **only** the
+page-views that errored:
+
+```bash
+thundera look --retries 1
+```
+
+An error that reproduces stands. One that doesn't is demoted to a warning and
+marked `"flaky": true`, with the reason appended to its detail. It is never
+deleted — an error that comes and goes is still information, and dropping it
+would be its own kind of lie.
+
 ## Vision (optional, advisory)
 
 ```bash
@@ -262,7 +346,9 @@ note. Set `THUNDERA_VISION_MODEL` (default `qwen3-vl:8b`) and `OLLAMA_HOST`.
 ## In CI
 
 ```yaml
-- run: pip install eye-of-thundera[all] && playwright install --with-deps chromium
+- run: |
+    pip install "eye-of-thundera[all] @ git+https://github.com/xsytrance/eyeofthundera.git"
+    playwright install --with-deps chromium
 - run: ./start-my-app &
 - run: thundera look --report docs/inspector-report.md
 ```
@@ -300,7 +386,13 @@ findings, optional clicks, and a versioned JSON contract.
 - **MCP server** — the same `look()` behind tool definitions, for agents without
   shell access. `api.look()` is already the single entry point so this is an
   adapter, not a rewrite.
-- Per-viewport `settle_ms`, and video capture of a click path.
+- **A real accessibility pass** — alt text, form labels, accessible names,
+  heading order, landmarks, focus visibility. Contrast and tap targets are the
+  only two today.
+- **Visual diffing** — the baseline compares findings, not pixels; a layout can
+  break in ways no named check catches.
+- Per-viewport `settle_ms` and `pre_clicks`; multi-origin apps; a smarter `http`
+  engine; `init --crawl` to scaffold a config; video capture of a click path.
 
 ## Licence
 

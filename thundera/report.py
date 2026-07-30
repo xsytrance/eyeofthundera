@@ -32,7 +32,12 @@ def finding_id(rec: dict, finding: dict) -> str:
 def summarize(records: list[dict]) -> dict:
     views = {"clean": 0, "with_warnings": 0, "with_errors": 0, "skipped": 0}
     errors = warnings = 0
+    # Measurements the collector abstained from. Counted even when the matching
+    # finding kind is severity "off", so that "0 warnings" can never be mistaken
+    # for "everything was checked".
+    unverified = 0
     for r in records:
+        unverified += sum((r.get("unverified") or {}).values())
         if r.get("skipped"):
             views["skipped"] += 1
             continue
@@ -45,7 +50,10 @@ def summarize(records: list[dict]) -> dict:
             views["with_warnings"] += 1
         else:
             views["clean"] += 1
-    return {"page_views": len(records), **views, "errors": errors, "warnings": warnings}
+    return {
+        "page_views": len(records), **views,
+        "errors": errors, "warnings": warnings, "unverified": unverified,
+    }
 
 
 def build(records: list[dict], meta: dict, vision: dict | None = None,
@@ -98,6 +106,13 @@ def write_markdown(body: dict, path: Path) -> Path:
         f"(of {s['page_views']} page-views)",
         "",
     ]
+    if s.get("unverified"):
+        lines += [
+            f"> ⚪ **{s['unverified']} measurements could not be judged** — a gradient "
+            "or image background, or a paint stack the hit test could not resolve. "
+            "Not failures; things the Eye declined to guess at.",
+            "",
+        ]
 
     bl = body.get("baseline")
     if bl:
@@ -159,6 +174,8 @@ def write_text_summary(body: dict) -> str:
         f"{s['clean']} clean · {s['with_warnings']} warn · {s['with_errors']} error "
         f"· {s['skipped']} skipped  ({s['errors']} errors, {s['warnings']} warnings)"
     )
+    if s.get("unverified"):
+        head += f"\n{s['unverified']} measurements could not be judged (see `unverified`)"
     bl = body.get("baseline")
     if bl:
         head += f"\nvs baseline: {len(bl.get('new', []))} new, {len(bl.get('fixed', []))} fixed"
