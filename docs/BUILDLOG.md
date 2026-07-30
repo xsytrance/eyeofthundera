@@ -9,6 +9,64 @@ earlier decision was reversed, add a new entry saying so.
 
 ---
 
+## 2026-07-30 (later) — `navigate = "once"`, and the seven views finally open
+
+**What:** One small feature, and the payoff it was built for. 97 → 103 tests.
+`examples/undertale-vera.toml` goes from 13 surfaces to **20**, 26 page-views to
+**40**. The Eye now sees all 16 of that app's views; this morning it saw 9.
+
+**The feature.** `[app] navigate = "always" | "once"`, default unchanged. Under
+`"once"` the browser engine reuses the page whenever the resolved URL is
+unchanged, instead of calling `page.goto()` before every surface. Three lines in
+`sweep_browser`. It exists because the previous entry found the blocker: a
+loaded save lives in a JS closure, `localStorage` holds nothing, and the
+per-surface reload threw it away.
+
+Reuse is keyed on the **URL**, not on "skip everything after the first load", so
+a surface with a genuinely different path still navigates — there is a test for
+exactly that, because the lazy implementation would have passed the other two.
+Records carry `"nav_note": "reused page (navigate = once)"`; a page-view
+measured without a fresh load is a different claim and the JSON says so.
+
+**The cost, which is why it is opt-in and why the tests are a matched pair.**
+With reuse, each surface arrives showing whatever the last one left on screen.
+`chat` — which had needed no clicks at all, because a fresh load opens there —
+now needs an explicit `[data-view="chat"]`. The test that proves the feature
+works (`in-memory state survives`) and the test that proves the default still
+isolates (`the default reloads and therefore loses it`) are the same page with
+one config key flipped. Neither is meaningful alone.
+
+**What surprised us: the config got *more* honest, not less.** Every surface in
+the example now ends its `setup` with `{ wait_for = "#view-<key>" }`. That was
+not tidiness — it is the direct lesson of this morning's false pass. A bare
+click reports success even when the app redirects, and the only reason the
+first attempt was caught was that somebody opened a PNG. `wait_for` turns "I
+clicked it" into "I got there", checkable by the machine. `pre_clicks` is now
+absent from that config entirely; `setup` supersedes it for click-routed apps,
+because `pre_clicks` cannot express an assertion.
+
+**Caught by the tool, on the first full run.** Desktop passed; all twenty mobile
+surfaces failed with `setup_failed`, 54 errors. At 390px the nav is a drawer and
+`#add-save-btn` is unreachable until `#save-pill` opens it — the profile setup
+had no `?#save-pill` guard, so the upload never happened and every record was
+correctly tainted. Exactly the class of bug that used to report clean.
+
+**The payoff, and it is a real one.** With mobile fixed: 19 clean and `council`
+at m390 reporting **nine genuine `tap_target` warnings** — 56×21px "talk"
+buttons, well under the 32px floor, on a view nobody had ever looked at on a
+phone. That is the whole argument for this project in one line: the findings
+were always there, and the tool could not see the room they were in.
+
+**Also:** `examples/fixtures/` now holds the two synthetic save files (126 bytes
+together) so the example is self-contained and `thundera check` passes in CI —
+a missing upload fixture is a config error by design.
+
+**Note for whoever syncs the consumer:** `undertale-vera`'s own `thundera.toml`
+is now behind this copy. It does not have the seven views, `navigate = "once"`,
+or the `wait_for` assertions.
+
+---
+
 ## 2026-07-30 — Verifying the seven hidden views, and being wrong twice
 
 **What:** No code change. An attempt to actually reach undertale-vera's seven

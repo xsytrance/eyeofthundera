@@ -252,3 +252,17 @@ def test_an_unset_env_var_is_an_error_not_an_empty_string(monkeypatch):
     monkeypatch.delenv("NOPE_NOT_SET", raising=False)
     with pytest.raises(ConfigError, match=r"\$\{NOPE_NOT_SET\}"):
         cfg(seeds={"token": "${NOPE_NOT_SET}"})
+
+
+# ── navigate ─────────────────────────────────────────────────────────────────
+def test_navigate_defaults_to_always():
+    assert cfg().navigate == "always"
+
+
+def test_navigate_once_is_accepted():
+    assert cfg(app={"base": "http://x", "paths": ["/"], "navigate": "once"}).navigate == "once"
+
+
+def test_an_unknown_navigate_mode_is_rejected():
+    with pytest.raises(ConfigError, match="app.navigate must be"):
+        cfg(app={"base": "http://x", "paths": ["/"], "navigate": "sometimes"})

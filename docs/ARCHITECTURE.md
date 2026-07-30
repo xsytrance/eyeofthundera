@@ -68,7 +68,7 @@ parsing, stdout formatting, and exit-code translation.
 
 ```
 Config
-├── name, base, routing ("path" | "hash")
+├── name, base, routing ("path" | "hash"), navigate ("always" | "once")
 ├── viewports  : tuple[Viewport]   label, width, height, scale, mobile
 ├── profiles   : tuple[Profile]    name, seeds{}, setup(), cookies(), headers{}
 ├── surfaces   : tuple[Surface]    key, path, group, settle_ms,
@@ -84,6 +84,20 @@ Step                               one precondition action
 ├── value     : str | dict         selector, or {selector, text|path}
 └── optional  : bool               the "?" prefix — allowed not to apply
 ```
+
+`navigate` decides whether each surface gets a fresh page load. `"always"` (the
+default) reloads before every surface, which is isolation: nothing surface A did
+can reach surface B. `"once"` reuses the page whenever the resolved URL is
+unchanged — necessary when a precondition establishes state the app holds in
+memory, because a reload destroys it, and on a click-routed SPA where every
+surface is `/` the reload was buying nothing anyway.
+
+Reuse is keyed on the URL, not on "skip everything after the first load", so a
+surface with a genuinely different path still navigates. Records carry
+`"nav_note": "reused page (navigate = once)"` — a page-view measured without a
+fresh load is a different claim, and the JSON should not quietly imply
+otherwise. The cost, and the reason it is opt-in: each surface arrives showing
+whatever the previous one left, so every surface must select its own view.
 
 `seeds` only reach localStorage. `Step` is how the Eye reaches states that need
 more than that — a save file uploaded, a session cookie, a logged-in profile.

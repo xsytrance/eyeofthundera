@@ -157,12 +157,23 @@ def sweep_browser(
                             continue
                         for k in ev:
                             ev[k].clear()
-                        try:
-                            page.goto(rec["url"], wait_until="networkidle", timeout=timeout_ms)
-                        except Exception as e:
-                            # networkidle never settling is common on apps with
-                            # polling/SSE; measure anyway and note it.
-                            rec["nav_note"] = f"{type(e).__name__} (continuing after settle)"
+                        # navigate = "once": reuse the page when the URL is
+                        # already right. On a click-routed SPA every surface is
+                        # the same URL, so the reload buys nothing and destroys
+                        # any in-memory state a precondition established. Said
+                        # out loud in the record — a page-view measured without
+                        # a fresh load is a different claim, and the JSON should
+                        # not quietly imply otherwise.
+                        if cfg.navigate == "once" and page.url == rec["url"]:
+                            rec["nav_note"] = "reused page (navigate = once)"
+                        else:
+                            try:
+                                page.goto(rec["url"], wait_until="networkidle",
+                                          timeout=timeout_ms)
+                            except Exception as e:
+                                # networkidle never settling is common on apps
+                                # with polling/SSE; measure anyway and note it.
+                                rec["nav_note"] = f"{type(e).__name__} (continuing after settle)"
                         page.wait_for_timeout(surf.settle_ms)
                         # Surface setup establishes the precondition; pre_clicks
                         # then navigate to the view. Order matters.

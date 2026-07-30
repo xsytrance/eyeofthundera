@@ -219,6 +219,7 @@ Everything app-specific lives in `thundera.toml`; the engine knows none of it.
 name = "my-app"
 base = "http://127.0.0.1:3000"
 routing = "path"           # or "hash", for /#/dashboard SPAs
+navigate = "always"        # or "once" — see below
 
 [[surfaces]]
 key = "dashboard"
@@ -315,6 +316,30 @@ report clean.
 a token never has to be committed. An unset variable is a hard error rather than
 an empty string, because a blank `Authorization` header produces a sweep of 401s
 that look like the app's fault.
+
+**`navigate = "once"`, when the app keeps state in memory.** By default the Eye
+reloads before every surface — clean isolation, so one surface can't affect the
+next. But plenty of SPAs hold their state in a JS closure rather than
+`localStorage`, and for those a reload throws away whatever your `setup` just
+established. Set `navigate = "once"` and the page is reused whenever the
+resolved URL is unchanged, which on a click-routed app is the entire matrix.
+
+The trade-off is real and it is why this is opt-in: with reuse, each surface
+arrives showing whatever the last one left on screen. **Every surface then has
+to select its own view**, including the one the app opens by default. Records
+say `"nav_note": "reused page (navigate = once)"` so the JSON never implies a
+fresh load it didn't do.
+
+Pair it with a `wait_for` on the view's own container. A bare click reports
+success even when the app quietly redirects you somewhere else — `wait_for` is
+what turns "I clicked it" into "I got there":
+
+```toml
+setup = [
+  { click = '[data-view="council"]' },
+  { wait_for = "#view-council" },      # without this, a bounce looks like a pass
+]
+```
 
 ## Flaky runs
 

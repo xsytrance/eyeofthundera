@@ -1,6 +1,6 @@
 # Handoff
 
-**Last updated:** 2026-07-29 (fourth session) · **Version:** 0.1.0 · **State:** working, published, adopted by its first consumer — one vendored copy deleted, three to go. The known contrast false-positive is fixed.
+**Last updated:** 2026-07-30 (fifth session) · **Version:** 0.1.0 · **State:** working, published, adopted by its first consumer — one vendored copy deleted, three to go. The contrast false-positive is fixed, and all 16 of undertale-vera's views are now visible (was 9).
 
 > This is the living state document. If you are picking this project up cold —
 > human or agent — read this file and `docs/VISION.md`, in that order, and you
@@ -23,7 +23,7 @@ existed as four diverging copies across Rod's projects.
 
 | | |
 |---|---|
-| **Works** | Yes. 97/97 tests green. Used on three live apps (:9092, :9095, :9096). |
+| **Works** | Yes. 103/103 tests green. Used on three live apps (:9092, :9095, :9096). |
 | **Published** | `github.com/xsytrance/eyeofthundera` (private) |
 | **Consumed by** | **`undertale-vera`** — its `inspector.py` is deleted, its `thundera.toml` is committed. `ember-lite`, `ember-pro`, `fft-psx-vera` still carry copies. |
 | **Version** | 0.1.0, not on PyPI |
@@ -32,7 +32,7 @@ existed as four diverging copies across Rod's projects.
 ### What's proven
 
 - Zero-config sweep of an arbitrary URL (`thundera look http://host`)
-- Full config sweep — 13 surfaces × 2 viewports on undertale-vera
+- Full config sweep — 20 surfaces × 2 viewports on undertale-vera (40 page-views)
 - Both engines (`browser` via Playwright, `http` via urllib)
 - Baseline round-trip stable across two live runs (0 new, 0 fixed — no jitter)
 - Montage renders correctly (verified by eye, 16 distinct views)
@@ -45,6 +45,8 @@ existed as four diverging copies across Rod's projects.
 - Preconditions (`setup` steps, cookies, headers, `${VAR}`) reach states seeds
   cannot — verified end to end with a real file upload
 - `--retries` demotes a non-reproducing error to a flaky warning, on both engines
+- `navigate = "once"` carries in-memory precondition state across surfaces —
+  which is what made undertale-vera's seven save-gated views reachable
 
 ### What is *not* proven
 
@@ -72,7 +74,7 @@ cd ~/eye-of-thundera
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/playwright install chromium      # if ~/.cache/ms-playwright is empty
-.venv/bin/python -m pytest -q              # expect 97 passed
+.venv/bin/python -m pytest -q              # expect 103 passed
 ```
 
 Then, with any web app running:
@@ -90,7 +92,7 @@ populated it, which is why the browser suite ran without a separate download.
 ```
 thundera/          the package — see docs/ARCHITECTURE.md for the module map
 examples/          real configs for undertale-vera and fft-psx-vera
-tests/             97 tests; test_browser.py auto-skips without Playwright
+tests/            103 tests; test_browser.py auto-skips without Playwright
 docs/VISION.md     why this exists, and the principles that are load-bearing
 docs/ARCHITECTURE.md   modules, data shapes, how {param} resolution works
 docs/BUILDLOG.md   append-only history — "why does it do that?" lives here
@@ -170,42 +172,43 @@ Each of these has a reason recorded in `docs/VISION.md` or `docs/BUILDLOG.md`.
    committed there. See the BUILDLOG entry for what the example config was
    missing (`commons`, and the four `/api/*` surfaces).
 
-2. **Add the seven hidden undertale-vera views.** The NEEDS_SAVE views (council,
-   timeline, journal, constellation, chronicle, judgment, reports) bounce to the
-   saves view unless a save has been read, so they were never listed. **The Eye
-   sees 9 of 16 views of its own flagship consumer.**
+2. ~~**Add the seven hidden undertale-vera views.**~~ **Done** — 2026-07-30.
+   `examples/undertale-vera.toml` now covers **20 surfaces, 40 page-views**, up
+   from 13 and 26. The `with-save` profile uploads a synthetic save once per
+   context; `navigate = "once"` stops the per-surface reload from throwing it
+   away. Immediate payoff: nine genuine `tap_target` warnings on `council` at
+   m390 (56×21px "talk" buttons), on a view that had never been looked at.
 
-   Verified 2026-07-30, and the first two answers were both wrong — recorded
-   here so nobody repeats them:
+   Three things learned, all worth keeping:
 
-   - Fixtures are **not** needed. `undertale-vera/tests/fixtures/file0_pacifist`
-     (30 bytes) and `undertale_pacifist.ini` (96 bytes) already exist and are
-     already synthetic — `tools/make_synthetic_fixtures.py` exists precisely
-     because the originals carried a real player's name.
-   - `setup` steps upload them fine, and the save loads (`#route-badge` reads
-     "route: Pacifist"). **But the loaded save is in-memory only** — nothing in
-     `localStorage` — and the browser engine re-navigates per surface, which
-     wipes it. Profile-level setup therefore cannot carry a save across
-     surfaces. This is the real blocker, and it is a gap in *this* tool, not in
-     the config.
-   - Saves do persist **server-side**, so re-clicking a shelf card per surface
-     works today: `{click = "#shelf .save-card >> nth=0"}`, `{wait_for =
-     "#route-badge"}`, then the view click. Confirmed: all seven views reached,
-     screenshot inspected. But it depends on the instance already having a save,
-     so it is not self-contained for a fresh deployment.
+   - **The fixtures already existed.** An earlier draft of this file asked Rod
+     to supply one. `undertale-vera/tests/fixtures/file0_pacifist` (30 bytes)
+     and `undertale_pacifist.ini` (96 bytes) have been there since July and are
+     already synthetic. Both are now copied into `examples/fixtures/`.
+   - **A loaded save lives in memory only** — nothing in `localStorage` — so the
+     engine's per-surface `page.goto()` destroyed it. That is what `navigate =
+     "once"` exists to fix.
+   - **Under `navigate = "once"` every surface must select its own view**,
+     including the one the app opens by default, because the page arrives
+     showing whatever the previous surface left. `chat` needed an explicit
+     `[data-view="chat"]` click it never needed before.
 
-   The clean fix is **not reloading between surfaces when the URL is unchanged**
-   (every undertale surface is `/`). That belongs in the deferred list below;
-   until it lands, the shelf-card workaround is what to use.
+   **A warning about verifying work like this.** The first attempt reported
+   seven clean surfaces with seven distinct screenshot checksums — and all seven
+   were the same saves view. This app re-randomises its ambient quote and lore
+   panels every load, so byte differences prove nothing. The build log's
+   "byte-identical sizes" tell is necessary, not sufficient. Assert with a
+   `wait_for` on the view's own container, which fails honestly, and then open a
+   screenshot and look at it. Every surface in the example config now carries
+   such an assertion; that is the pattern to copy.
 
-   **A warning about verifying this.** The first check — seven distinct
-   screenshot checksums — passed while all seven were the *same* saves view.
-   The app's ambient quote and lore panels re-randomise per load, so byte
-   differences prove nothing here. The tell in the build log ("byte-identical
-   sizes") is necessary, not sufficient. Assert with a `wait_for` on the view's
-   own container, which fails honestly, and then look at a screenshot.
+3. **Give the remaining consumers the same treatment.** The example config's
+   `wait_for`-per-surface pattern should be the default for any click-routed
+   app, and `undertale-vera`'s own `thundera.toml` is now behind this copy —
+   syncing it is Rod's call, and it is what would put the seven views under his
+   local gate too.
 
-3. **Then `ember-lite` / `ember-pro`.** Correction to an earlier draft of this
+4. **Then `ember-lite` / `ember-pro`.** Correction to an earlier draft of this
    file: it said "neither app has been surveyed for views yet", implying a
    survey is the work. It mostly isn't — both are forks of the undertale-vera
    app, expose the **same fifteen `data-view` names**, and use the same `uv_*`
@@ -214,18 +217,18 @@ Each of these has a reason recorded in `docs/VISION.md` or `docs/BUILDLOG.md`.
    the four `/api/*` surfaces. ember-pro's own 2.2:1 contrast bug is still
    unfixed in that repo, so it cannot be a clean baseline until it is.
 
-4. **Run the fft config for real** with its stack up. Expect and fix config
+5. **Run the fft config for real** with its stack up. Expect and fix config
    bugs. Note it is the one consumer needing two origins (see *Known gaps*), and
    the only one that exercises `--vision`, which has never run in this package.
 
-5. **MCP server** — after step 4, so the tool surface is designed against real
+6. **MCP server** — after step 5, so the tool surface is designed against real
    usage. `api.look()` is the seam; this is an adapter, not a rewrite. Return
    screenshots as MCP *image content*, not paths, so a vision-capable agent
    actually sees the app.
 
-6. Answer the open questions in `docs/VISION.md` (public vs private; is "eyes"
+7. Answer the open questions in `docs/VISION.md` (public vs private; is "eyes"
    web-only; does it grow a memory; who else runs it — that last one would
-   reorder step 5).
+   reorder step 6).
 
 ### Deferred, with the reasoning intact
 
@@ -238,13 +241,6 @@ three and deferred these. Roughly in order of value:
   `COLLECT_JS`, so guardrail 5 stays intact and the pass can be disabled whole.
 - **Visual diffing** — store baseline screenshots, emit `visual_diff` above a
   configurable changed-pixel ratio. Pillow extra; degrades to a stated skip.
-- **Don't re-navigate when the URL is unchanged.** The browser engine calls
-  `page.goto()` for every surface. On a click-routed SPA every surface is `/`,
-  so that reload is pure waste *and* it destroys any in-memory state a
-  precondition established — which is exactly what blocks next-step 2 above.
-  Needs to be opt-in (`[app] navigate = "once"` or similar), because a fresh
-  load per surface is also what stops surface A's state leaking into surface B.
-  Would also make long sweeps markedly faster; fft is 226 page-views.
 - **Per-viewport `settle_ms` / `pre_clicks`** — accept a table keyed by viewport
   label as well as today's scalar.
 - **Multi-origin** — an `[origins]` table plus `--origin name=url`.

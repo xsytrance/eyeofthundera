@@ -12,12 +12,19 @@
 #
 # Views marked NEEDS_SAVE in app.js (council, timeline, journal, constellation,
 # chronicle, judgment, reports) bounce to the saves view unless a save has been
-# read, so they are not listed here — add them once a save is seeded.
+# read. As of 2026-07-30 they ARE listed: the `with-save` profile uploads a
+# synthetic save once per browser context, which is what unlocks them.
 
 [app]
 name = "undertale-vera"
 base = "http://127.0.0.1:9092"
 routing = "path"
+# Required by the `with-save` profile below. The app holds a loaded save in
+# memory only — nothing in localStorage — so a reload between surfaces throws
+# it away and the seven gated views bounce back to `saves`. Every surface here
+# is the same URL ("/"), so reusing the page costs nothing and is what makes
+# the upload stick. See docs/ARCHITECTURE.md for the isolation trade-off.
+navigate = "once"
 
 # Skip the first-run power picker and the one-shot per-view explainer modals —
 # otherwise every screenshot is a picture of a modal.
@@ -38,6 +45,33 @@ uv_seen_howitworks = "1"
 uv_seen_credits = "1"
 uv_seen_commons = "1"
 
+# ── the save precondition ────────────────────────────────────────────────────
+# Seven views are gated behind "has a save been read?", which no localStorage
+# seed can answer — the app wants an actual file. This runs once per browser
+# context, before any surface, and everything after it inherits the loaded save.
+#
+# The fixtures are synthetic (see examples/fixtures/README.md). The selectors
+# are the same ones undertale-vera's own frontend_smoke.py drives, which is the
+# best evidence they are the supported way in.
+
+[[profiles]]
+name = "with-save"
+setup = [
+  # At 390px the nav lives in a slide-in drawer and #add-save-btn is not
+  # reachable until #save-pill opens it. On desktop the pill does not exist,
+  # hence "?". Without this the upload fails at mobile only — which is exactly
+  # what the first run of this config reported, on all 20 surfaces.
+  { click = "?#save-pill" },
+  { click = "#add-save-btn" },
+  { upload = { selector = "#file0-input", path = "fixtures/file0_pacifist" } },
+  { upload = { selector = "#ini-input", path = "fixtures/undertale_pacifist.ini" } },
+  { click = "#upload-btn" },
+  # Proof the save actually parsed. Without this the sweep would happily
+  # measure seven copies of the saves view and call them clean — which is
+  # exactly what happened the first time this was attempted.
+  { wait_for = "#route-badge" },
+]
+
 # ── UI surfaces ──────────────────────────────────────────────────────────────
 
 [[surfaces]]
@@ -46,6 +80,12 @@ path = "/"
 group = "core"
 settle_ms = 2500
 inventory = { cast = ".chat-empty-cast", brand = ".brand-name" }
+# Under navigate = "once" the page is not reloaded, so it arrives showing
+# whatever the previous surface left on screen. Every surface therefore has to
+# select its own view explicitly — chat included, even though a fresh load
+# would have opened here by default. This is the cost of page reuse, and it is
+# why "once" is opt-in.
+setup = [{ click = '?#save-pill' }, { click = '[data-view="chat"]' }]
 
 [[surfaces]]
 key = "saves"
@@ -58,56 +98,182 @@ settle_ms = 1200
 # button is what opens it. (Guessing the selector here is how you get a
 # pre_click_failed finding, which is the point: the Eye refuses to call a
 # surface clean when it never actually got there.)
-pre_clicks = ["?#save-pill", "#add-save-btn"]
+setup = [
+  { click = "?#save-pill" },
+  { click = "#add-save-btn" },
+  { wait_for = "#view-saves" },
+]
 
 [[surfaces]]
 key = "howitworks"
 path = "/"
 group = "info"
 settle_ms = 1200
-pre_clicks = ["?#save-pill", '[data-view="howitworks"]']
+setup = [
+  { click = "?#save-pill" },
+  { click = '[data-view="howitworks"]' },
+  { wait_for = "#view-howitworks" },
+]
 
 [[surfaces]]
 key = "multivera"
 path = "/"
 group = "info"
 settle_ms = 1200
-pre_clicks = ["?#save-pill", '[data-view="multivera"]']
+setup = [
+  { click = "?#save-pill" },
+  { click = '[data-view="multivera"]' },
+  { wait_for = "#view-multivera" },
+]
 
 [[surfaces]]
 key = "commons"
 path = "/"
 group = "info"
 settle_ms = 1200
-pre_clicks = ["?#save-pill", '[data-view="commons"]']
+setup = [
+  { click = "?#save-pill" },
+  { click = '[data-view="commons"]' },
+  { wait_for = "#view-commons" },
+]
 
 [[surfaces]]
 key = "credits"
 path = "/"
 group = "info"
 settle_ms = 1200
-pre_clicks = ["?#save-pill", '[data-view="credits"]']
+setup = [
+  { click = "?#save-pill" },
+  { click = '[data-view="credits"]' },
+  { wait_for = "#view-credits" },
+]
 
 [[surfaces]]
 key = "soundtest"
 path = "/"
 group = "extras"
 settle_ms = 2000
-pre_clicks = ["?#save-pill", '[data-view="soundtest"]']
+setup = [
+  { click = "?#save-pill" },
+  { click = '[data-view="soundtest"]' },
+  { wait_for = "#view-soundtest" },
+]
 
 [[surfaces]]
 key = "workshop"
 path = "/"
 group = "extras"
 settle_ms = 2000
-pre_clicks = ["?#save-pill", '[data-view="workshop"]']
+setup = [
+  { click = "?#save-pill" },
+  { click = '[data-view="workshop"]' },
+  { wait_for = "#view-workshop" },
+]
 
 [[surfaces]]
 key = "guided"
 path = "/"
 group = "extras"
 settle_ms = 2000
-pre_clicks = ["?#save-pill", '[data-view="guided"]']
+setup = [
+  { click = "?#save-pill" },
+  { click = '[data-view="guided"]' },
+  { wait_for = "#view-guided" },
+]
+
+# ── save-gated views ────────────────────────────────────────────────────────
+# Unreachable before 2026-07-30: they need the `with-save` profile above.
+
+[[surfaces]]
+key = "council"
+path = "/"
+group = "save"
+settle_ms = 1500
+setup = [
+  { click = "?#save-pill" },
+  { click = '[data-view="council"]' },
+  # The view's own container. A bare click "succeeds" even when the app
+  # redirects to `saves`, so this is what makes reaching the view verifiable.
+  { wait_for = "#view-council" },
+]
+
+[[surfaces]]
+key = "timeline"
+path = "/"
+group = "save"
+settle_ms = 1500
+setup = [
+  { click = "?#save-pill" },
+  { click = '[data-view="timeline"]' },
+  # The view's own container. A bare click "succeeds" even when the app
+  # redirects to `saves`, so this is what makes reaching the view verifiable.
+  { wait_for = "#view-timeline" },
+]
+
+[[surfaces]]
+key = "journal"
+path = "/"
+group = "save"
+settle_ms = 1500
+setup = [
+  { click = "?#save-pill" },
+  { click = '[data-view="journal"]' },
+  # The view's own container. A bare click "succeeds" even when the app
+  # redirects to `saves`, so this is what makes reaching the view verifiable.
+  { wait_for = "#view-journal" },
+]
+
+[[surfaces]]
+key = "constellation"
+path = "/"
+group = "save"
+settle_ms = 1500
+setup = [
+  { click = "?#save-pill" },
+  { click = '[data-view="constellation"]' },
+  # The view's own container. A bare click "succeeds" even when the app
+  # redirects to `saves`, so this is what makes reaching the view verifiable.
+  { wait_for = "#view-constellation" },
+]
+
+[[surfaces]]
+key = "chronicle"
+path = "/"
+group = "save"
+settle_ms = 1500
+setup = [
+  { click = "?#save-pill" },
+  { click = '[data-view="chronicle"]' },
+  # The view's own container. A bare click "succeeds" even when the app
+  # redirects to `saves`, so this is what makes reaching the view verifiable.
+  { wait_for = "#view-chronicle" },
+]
+
+[[surfaces]]
+key = "judgment"
+path = "/"
+group = "save"
+settle_ms = 1500
+setup = [
+  { click = "?#save-pill" },
+  { click = '[data-view="judgment"]' },
+  # The view's own container. A bare click "succeeds" even when the app
+  # redirects to `saves`, so this is what makes reaching the view verifiable.
+  { wait_for = "#view-judgment" },
+]
+
+[[surfaces]]
+key = "reports"
+path = "/"
+group = "save"
+settle_ms = 1500
+setup = [
+  { click = "?#save-pill" },
+  { click = '[data-view="reports"]' },
+  # The view's own container. A bare click "succeeds" even when the app
+  # redirects to `saves`, so this is what makes reaching the view verifiable.
+  { wait_for = "#view-reports" },
+]
 
 # ── API surfaces ─────────────────────────────────────────────────────────────
 # Carried over from the vendored inspector's SURFACES list so the migration

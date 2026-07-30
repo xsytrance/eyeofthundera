@@ -130,6 +130,13 @@ class Config:
     name: str = "app"
     base: str = "http://127.0.0.1:8000"
     routing: str = "path"                 # "path" | "hash"
+    # "always" reloads before every surface — isolation, and the default.
+    # "once" reuses the page when the resolved URL is unchanged, which is the
+    # whole matrix on a click-routed SPA where every surface is "/". Needed
+    # when a precondition establishes state the app keeps in memory: a reload
+    # throws it away. Opt-in, because reusing the page also lets one surface's
+    # state leak into the next.
+    navigate: str = "always"              # "always" | "once"
     discovery: Discovery | None = None
     params: dict[str, str] = field(default_factory=dict)    # static {param} values
     seeds: dict[str, str] = field(default_factory=dict)     # applied under every profile
@@ -180,6 +187,11 @@ class Config:
         routing = app.get("routing", "path")
         if routing not in ("path", "hash"):
             raise ConfigError(f"app.routing must be 'path' or 'hash', got {routing!r}")
+        navigate = app.get("navigate", "always")
+        if navigate not in ("always", "once"):
+            raise ConfigError(
+                f"app.navigate must be 'always' or 'once', got {navigate!r}"
+            )
 
         viewports = tuple(
             Viewport(
@@ -265,6 +277,7 @@ class Config:
             name=app.get("name", "app"),
             base=str(app.get("base", "http://127.0.0.1:8000")).rstrip("/"),
             routing=routing,
+            navigate=navigate,
             discovery=disc,
             params={
                 k: expand_env(str(v), f"param {k!r}")

@@ -328,6 +328,75 @@ def test_a_failed_profile_setup_taints_every_surface_in_the_context(site, tmp_pa
     assert r.exit_code == 1
 
 
+# ── navigate = "once" ────────────────────────────────────────────────────────
+# A click-routed SPA keeps its state in memory, and the per-surface reload
+# throws it away. This is the page that proves it: #inc bumps a counter held
+# only in a JS closure, and #twice appears at 2. Nothing touches localStorage,
+# so the count survives only if the page was never reloaded.
+
+COUNTER = """<!doctype html><meta charset=utf-8><title>counter</title>
+<style>body{background:#fff;color:#111;font:16px sans-serif}</style>
+<button id="inc">inc</button><p id="count">0</p>
+<script>
+  let n = 0;
+  document.getElementById('inc').onclick = () => {
+    n += 1;
+    document.getElementById('count').textContent = String(n);
+    if (n >= 2 && !document.getElementById('twice')) {
+      const d = document.createElement('div');
+      d.id = 'twice'; d.textContent = 'clicked twice in one page';
+      document.body.appendChild(d);
+    }
+  };
+</script>
+"""
+
+
+def _counter_cfg(site, navigate):
+    """Two surfaces, same URL, each clicking #inc once."""
+    return {
+        "app": {"name": "t", "base": site, "navigate": navigate},
+        "viewports": [{"label": "d", "width": 1024, "height": 768}],
+        "surfaces": [
+            {"key": "first", "path": "/counter.html", "settle_ms": 250,
+             "setup": [{"click": "#inc"}]},
+            # Only reachable if the first surface's click survived.
+            {"key": "second", "path": "/counter.html", "settle_ms": 250,
+             "setup": [{"click": "#inc"}, {"wait_for": "#twice"}]},
+        ],
+    }
+
+
+def test_navigate_once_reuses_the_page_and_keeps_in_memory_state(site, tmp_path):
+    (tmp_path / "counter.html").write_text(COUNTER)
+    r = look(Config.from_dict(_counter_cfg(site, "once")), out_dir=tmp_path / "run",
+             engine="browser", make_montage=False, log=lambda *a: None)
+    assert r.exit_code == 0
+    assert r.body["records"][1]["findings"] == []
+    assert r.body["records"][1]["nav_note"] == "reused page (navigate = once)"
+
+
+def test_the_default_reloads_and_therefore_loses_it(site, tmp_path):
+    """The control — and proof the default behaviour is unchanged."""
+    (tmp_path / "counter.html").write_text(COUNTER)
+    r = look(Config.from_dict(_counter_cfg(site, "always")), out_dir=tmp_path / "run",
+             engine="browser", make_montage=False, log=lambda *a: None)
+    assert r.exit_code == 1
+    assert any(f["kind"] == "setup_failed" for f in r.body["records"][1]["findings"])
+    assert "reused" not in r.body["records"][1].get("nav_note", "")
+
+
+def test_navigate_once_still_loads_when_the_url_differs(site, tmp_path):
+    """Reuse is keyed on the URL, not on "skip every navigation after the first"."""
+    (tmp_path / "counter.html").write_text(COUNTER)
+    raw = _counter_cfg(site, "once")
+    raw["surfaces"][1] = {"key": "elsewhere", "path": "/", "settle_ms": 250}
+    r = look(Config.from_dict(raw), out_dir=tmp_path / "run",
+             engine="browser", make_montage=False, log=lambda *a: None)
+    assert r.exit_code == 0
+    assert "reused" not in r.body["records"][1].get("nav_note", "")
+
+
 def test_obscured_can_be_turned_on_as_a_finding(site, tmp_path):
     (tmp_path / "grad.html").write_text(
         '<body style="margin:0"><div style="background:linear-gradient(#000,#fff);'
