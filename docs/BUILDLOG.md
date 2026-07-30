@@ -9,6 +9,66 @@ earlier decision was reversed, add a new entry saying so.
 
 ---
 
+## 2026-07-30 — Verifying the seven hidden views, and being wrong twice
+
+**What:** No code change. An attempt to actually reach undertale-vera's seven
+NEEDS_SAVE views with the new `setup` steps, which failed in two instructive
+ways before working. Documented because both failures are the kind this project
+exists to prevent, and the second one nearly shipped as a claim.
+
+**Wrong the first time — "we need a save fixture."** The previous session's
+handoff asked Rod for one. It didn't need to: `undertale-vera/tests/fixtures/`
+has had `file0_pacifist` (30 bytes) and `undertale_pacifist.ini` (96 bytes)
+since July, and `tools/make_synthetic_fixtures.py` exists precisely because the
+originals carried a real player's name. The answer was already in the repo the
+migration came from. Look before asking.
+
+**Wrong the second time, and worse.** With the uploads wired up, a sweep of all
+seven views reported **0 errors, 7 clean surfaces**. The screenshots had seven
+distinct checksums and seven distinct byte sizes, which the last build log entry
+names as the tell for a `pre_click` that didn't land. It looked verified.
+
+It wasn't. Opening one screenshot showed the **saves view**, with the text
+*"Read a save first to open Council."* in the corner and both file inputs
+reading "No file chosen". All seven were the same page.
+
+Two lessons, both worth keeping:
+
+1. **The byte-size tell is necessary, not sufficient.** This app re-randomises
+   its ambient quote and lore panels on every load, so seven "different"
+   screenshots are the default, not evidence. A heuristic that worked once
+   became a way to feel verified without being verified.
+2. **The Eye cannot tell that a click bounced.** `[data-view="council"]` exists
+   and is clickable, so `pre_click` succeeded; the app then redirected to
+   `saves`. The Eye has no notion of a content assertion (decision 9) and never
+   will — but `setup` now gives configs a way to assert it themselves. A
+   `{wait_for = "#view-council"}` step fails honestly when the view never
+   opened, which is what turned the false pass into seven `setup_failed`
+   errors. That is the feature earning its place.
+
+**The actual blocker, once the noise cleared.** The upload works and the save
+loads — `#route-badge` reads "route: Pacifist (medium)". But the loaded save is
+**in-memory only**; `localStorage` holds nothing but `uv_power_seen`. The
+browser engine calls `page.goto()` per surface, and that reload discards it.
+Profile-level setup therefore cannot carry state across surfaces on this app.
+
+**What surprised us:** saves persist *server-side* even though the loaded state
+doesn't. The shelf comes back populated after a reload, so re-clicking a save
+card per surface restores everything — which gives a working config today
+(confirmed: all seven views reached, and the council screenshot really is Sans,
+Toriel and Flowey reacting to a Pacifist run). It depends on the instance
+already holding a save, so it isn't self-contained for a fresh deployment.
+
+The clean fix is to skip navigation when the resolved URL matches the current
+one, opt-in, since a fresh load per surface is also what stops surface A leaking
+into surface B. Added to the deferred list.
+
+**Housekeeping:** the verification runs uploaded five throwaway saves to the
+:9092 instance (Frisk / Pacifist / Jul 30). They are real rows in that app's
+save list and should be deleted.
+
+---
+
 ## 2026-07-29 (fourth session) — The truth pass
 
 **What:** Three changes, chosen from a worked-up list of twelve. Rod picked the

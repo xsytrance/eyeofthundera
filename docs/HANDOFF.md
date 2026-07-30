@@ -170,13 +170,40 @@ Each of these has a reason recorded in `docs/VISION.md` or `docs/BUILDLOG.md`.
    committed there. See the BUILDLOG entry for what the example config was
    missing (`commons`, and the four `/api/*` surfaces).
 
-2. **Add the seven hidden undertale-vera views.** The blocker is gone: `setup`
-   steps can now upload a save. The config has always carried the note — the
-   NEEDS_SAVE views (council, timeline, journal, constellation, chronicle,
-   judgment, reports) bounce to the saves view unless a save has been read, so
-   they were never listed. **The Eye currently sees 9 of 16 views of its own
-   flagship consumer.** Needs a save fixture committed to `examples/fixtures/`
-   and a profile that uploads it. This is the cheapest large win available.
+2. **Add the seven hidden undertale-vera views.** The NEEDS_SAVE views (council,
+   timeline, journal, constellation, chronicle, judgment, reports) bounce to the
+   saves view unless a save has been read, so they were never listed. **The Eye
+   sees 9 of 16 views of its own flagship consumer.**
+
+   Verified 2026-07-30, and the first two answers were both wrong — recorded
+   here so nobody repeats them:
+
+   - Fixtures are **not** needed. `undertale-vera/tests/fixtures/file0_pacifist`
+     (30 bytes) and `undertale_pacifist.ini` (96 bytes) already exist and are
+     already synthetic — `tools/make_synthetic_fixtures.py` exists precisely
+     because the originals carried a real player's name.
+   - `setup` steps upload them fine, and the save loads (`#route-badge` reads
+     "route: Pacifist"). **But the loaded save is in-memory only** — nothing in
+     `localStorage` — and the browser engine re-navigates per surface, which
+     wipes it. Profile-level setup therefore cannot carry a save across
+     surfaces. This is the real blocker, and it is a gap in *this* tool, not in
+     the config.
+   - Saves do persist **server-side**, so re-clicking a shelf card per surface
+     works today: `{click = "#shelf .save-card >> nth=0"}`, `{wait_for =
+     "#route-badge"}`, then the view click. Confirmed: all seven views reached,
+     screenshot inspected. But it depends on the instance already having a save,
+     so it is not self-contained for a fresh deployment.
+
+   The clean fix is **not reloading between surfaces when the URL is unchanged**
+   (every undertale surface is `/`). That belongs in the deferred list below;
+   until it lands, the shelf-card workaround is what to use.
+
+   **A warning about verifying this.** The first check — seven distinct
+   screenshot checksums — passed while all seven were the *same* saves view.
+   The app's ambient quote and lore panels re-randomise per load, so byte
+   differences prove nothing here. The tell in the build log ("byte-identical
+   sizes") is necessary, not sufficient. Assert with a `wait_for` on the view's
+   own container, which fails honestly, and then look at a screenshot.
 
 3. **Then `ember-lite` / `ember-pro`.** Correction to an earlier draft of this
    file: it said "neither app has been surveyed for views yet", implying a
@@ -211,6 +238,13 @@ three and deferred these. Roughly in order of value:
   `COLLECT_JS`, so guardrail 5 stays intact and the pass can be disabled whole.
 - **Visual diffing** — store baseline screenshots, emit `visual_diff` above a
   configurable changed-pixel ratio. Pillow extra; degrades to a stated skip.
+- **Don't re-navigate when the URL is unchanged.** The browser engine calls
+  `page.goto()` for every surface. On a click-routed SPA every surface is `/`,
+  so that reload is pure waste *and* it destroys any in-memory state a
+  precondition established — which is exactly what blocks next-step 2 above.
+  Needs to be opt-in (`[app] navigate = "once"` or similar), because a fresh
+  load per surface is also what stops surface A's state leaking into surface B.
+  Would also make long sweeps markedly faster; fft is 226 page-views.
 - **Per-viewport `settle_ms` / `pre_clicks`** — accept a table keyed by viewport
   label as well as today's scalar.
 - **Multi-origin** — an `[origins]` table plus `--origin name=url`.
