@@ -36,6 +36,16 @@ pip install "eye-of-thundera[all] @ git+https://github.com/xsytrance/eyeofthunde
 playwright install chromium
 ```
 
+**Needs Python 3.11 or newer** (it uses `tomllib` from the standard library).
+Linux and macOS both work, Apple Silicon included — there is no platform-specific
+code in the package. The one thing that catches people on macOS is that the
+system `python3` is still 3.9, so install a current one first:
+
+```bash
+brew install python@3.12
+python3.12 -m venv .venv && source .venv/bin/activate
+```
+
 The core has **zero dependencies** — that is deliberate. Without Playwright it
 degrades to a status-code sweep rather than refusing to run, so it still tells
 you something true on a bare box.
@@ -76,6 +86,30 @@ can never contaminate what you parse. It is additionally forced off by `--json`,
 ```bash
 thundera look http://localhost:3000 --json -q
 ```
+
+### When an agent should show the eye
+
+Your stderr is a pipe, not a terminal, so the eye is off by default for you.
+`--animation` forces it on. In a pipe it draws one static frame with no escape
+codes, so it stays readable in a captured log.
+
+**Draw it deliberately, not habitually:**
+
+- **the first time you use the Eye** in a session — it is how the human watching
+  knows a new capability just came online;
+- **at the start of a new mission**, or before a run that matters — a release
+  check, a big refactor, the sweep whose answer you are about to act on;
+- **not on every invocation.** An eye on all forty runs of a tight loop is
+  wallpaper, and wallpaper is ignored. Use plain `--quiet --json` for those.
+
+```bash
+thundera look http://localhost:3000 --animation      # first use, new mission
+thundera look http://localhost:3000 --json -q        # the other thirty-nine
+```
+
+The closing iris *is* the verdict — green clean, amber warnings, red `(x)`
+errors — so when you do draw it, it carries the result rather than just
+announcing itself.
 
 ```jsonc
 {

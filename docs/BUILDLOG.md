@@ -9,6 +9,62 @@ earlier decision was reversed, add a new entry saying so.
 
 ---
 
+## 2026-07-30 (fifth session, later still) — Making it usable by somebody else
+
+**What:** The work of getting the Eye ready to hand to a second person with a
+second machine and a different fleet of agents. Two real gaps found by *using*
+it as a stranger would rather than reading it. 108 → 110 tests.
+
+**Gap one: the accessibility pass was unreachable from zero-config.** Found by
+installing the package into a clean venv and doing the thing the README leads
+with — `thundera look http://host`. There is no toml in that mode, so `[a11y]`
+had no way to be set, and the eight semantic checks were invisible to anyone who
+had not yet written a config. That is the opposite of the zero-config promise.
+Fixed with `--a11y` / `--no-a11y`.
+
+**Gap two, and the more interesting one: an agent could not draw the eye at
+all.** `enabled()` animates only when stderr is a terminal. An agent's stderr is
+a pipe. Every flag that existed forced it *off*; there was no way to force it
+*on*. So the eye — the thing the project is named for, whose iris carries the
+verdict — was structurally unavailable to its actual audience.
+
+`--animation` fixes it. The non-tty path already drew one static frame with no
+escape codes, so a forced eye is readable in a captured log rather than a spray
+of control characters. `--json` still outranks it: stdout stays pure JSON, and
+no decoration gets to break the contract.
+
+**The guidance matters as much as the flag.** Both "always" and "never" are
+wrong. The README now says: first use in a session, the start of a new mission,
+or a run whose answer you are about to act on — and *not* all forty runs of a
+tight loop, because an eye on every invocation is wallpaper and wallpaper is
+ignored. The iris is the verdict, so a drawn eye should carry a result, not just
+announce itself.
+
+**Verified rather than assumed, for the second machine:**
+
+- No platform-specific calls anywhere in `thundera/` — no `signal`, `fcntl`,
+  `termios`, `/proc`, `subprocess`, no `sys.platform` branches.
+- The art is pure ASCII. The only non-ASCII byte in any output is the `·`
+  separator in the verdict line, and it survives `LANG=C LC_ALL=C` without
+  raising — checked, because a `UnicodeEncodeError` on somebody else's laptop is
+  a bad first impression.
+- Cold install into a clean venv works, and zero-config against a throwaway
+  static site found six errors and seven warnings first try, including the
+  contrast case that used to be a false positive.
+- README now names the Python 3.11 floor and the macOS stumble explicitly: the
+  system `python3` there is still 3.9, which is the single most likely way a new
+  user's first command fails.
+
+**Still not verified:** nobody has run this on macOS. The evidence above is
+strong — no Linux-shaped code, portable stdlib only — but it is inference, not
+execution, and this file should not pretend otherwise.
+
+**The doc hook earned its keep.** The first attempt at this commit was rejected
+by `tools/hooks/pre-commit` for touching `thundera/` without updating this file.
+Working as designed.
+
+---
+
 ## 2026-07-30 (fifth session, later) — The accessibility pass
 
 **What:** `thundera/a11y.py`, a second in-page collector with eight semantic

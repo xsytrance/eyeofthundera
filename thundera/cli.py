@@ -105,7 +105,17 @@ def cmd_look(args, parser) -> int:
     log = (lambda *a: None) if args.quiet else (lambda *a: print(*a, file=err))
     # The animation is for a human watching a terminal. Under --json or --quiet
     # there is no human, so force it off rather than relying on the tty check.
-    animate = None if not (args.quiet or args.json or args.no_animation) else False
+    #
+    # --animation forces it ON, which is the only way an agent can draw it: an
+    # agent's stderr is a pipe, never a tty, so the auto-detect says no every
+    # time. In a pipe `eye` draws one static frame with no escape codes, so a
+    # forced eye stays readable in a captured log. --json still wins — the
+    # contract that stdout is pure JSON outranks any decoration.
+    animate = None
+    if args.quiet or args.json or args.no_animation:
+        animate = False
+    elif args.animation:
+        animate = True
 
     cfg = _load_config(args, parser).select(
         surfaces=args.surfaces.split(",") if args.surfaces else None,
@@ -268,6 +278,9 @@ def build_parser() -> argparse.ArgumentParser:
     look_p.add_argument("--no-montage", action="store_true")
     look_p.add_argument("--no-animation", action="store_true",
                         help="skip the eye (also: THUNDERA_NO_ANIM=1)")
+    look_p.add_argument("--animation", action="store_true",
+                        help="draw the eye even when stderr is not a terminal — "
+                             "how an agent shows it on first use or a new mission")
     look_p.add_argument("-q", "--quiet", action="store_true", help="silence progress on stderr")
     look_p.set_defaults(fn=cmd_look)
 

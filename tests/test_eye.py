@@ -62,3 +62,33 @@ def test_status_reflects_the_summary():
 def test_error_verdict_uses_a_different_iris():
     assert eye.IRIS["error"] != eye.IRIS["ok"]
     assert eye.IRIS["error"] in eye.open_frame(eye.IRIS["error"])
+
+
+# ── forcing the eye on ───────────────────────────────────────────────────────
+# An agent's stderr is a pipe, never a terminal, so auto-detect says no every
+# time. --animation is the only way it can draw the eye deliberately — on first
+# use, or at the start of a new mission.
+
+def test_a_forced_eye_draws_into_a_pipe_with_no_escape_codes():
+    import io
+
+    from thundera import eye
+
+    buf = io.StringIO()                       # not a tty
+    eye.open_eye(buf, force=True, delay=0)
+    eye.verdict("error", "3 errors", buf, force=True)
+    out = buf.getvalue()
+    assert "sight beyond sight" in out
+    assert "(x)" in out                        # the verdict iris, not the idle one
+    assert "\033" not in out                   # safe to capture in a log
+
+
+def test_cli_animation_flag_forces_it_and_json_still_wins(monkeypatch, capsys):
+    """--json outranks --animation: stdout must stay pure JSON."""
+    from thundera.cli import build_parser
+
+    p = build_parser()
+    a = p.parse_args(["look", "http://x", "--animation"])
+    assert a.animation is True and a.no_animation is False
+    b = p.parse_args(["look", "http://x", "--animation", "--json"])
+    assert b.animation is True and b.json is True     # cmd_look resolves to off

@@ -23,7 +23,7 @@ existed as four diverging copies across Rod's projects.
 
 | | |
 |---|---|
-| **Works** | Yes. 108/108 tests green. Cold-install verified from a clean venv. Used on three live apps (:9092, :9095, :9096). |
+| **Works** | Yes. 110/110 tests green. Cold-install into a clean venv verified. Used on three live apps (:9092, :9095, :9096). |
 | **Published** | `github.com/xsytrance/eyeofthundera` (private) |
 | **Consumed by** | **`undertale-vera`** — its `inspector.py` is deleted, its `thundera.toml` is committed. `ember-lite`, `ember-pro`, `fft-psx-vera` still carry copies. |
 | **Version** | 0.1.0, not on PyPI |
@@ -47,9 +47,17 @@ existed as four diverging copies across Rod's projects.
 - `--retries` demotes a non-reproducing error to a flaky warning, on both engines
 - `navigate = "once"` carries in-memory precondition state across surfaces —
   which is what made undertale-vera's seven save-gated views reachable
-- **Semantic accessibility pass** (`[a11y] enabled = true`, opt-in). Live: two
-  real findings on ember-lite, two on undertale-vera across five surfaces, and
-  no noise — both apps already set `lang` and have a `<main>`.
+- **Semantic accessibility pass** (`[a11y] enabled = true` or `--a11y`, opt-in).
+  Live: two real findings on ember-lite, two on undertale-vera across five
+  surfaces, and no noise — both apps already set `lang` and have a `<main>`.
+- **`--animation`** draws the eye even into a pipe. An agent's stderr is never a
+  terminal, so without it the eye was unreachable for the audience this project
+  exists for.
+- **Portable to a second machine.** No platform-specific calls anywhere in the
+  package; the art is pure ASCII and survives `LANG=C`; a cold install into a
+  clean venv works, and zero-config found real defects on a throwaway site first
+  try. **macOS is unverified by execution** — nobody has run it on one — but
+  nothing in the code is Linux-shaped.
 
 ### What is *not* proven
 
@@ -77,7 +85,7 @@ cd ~/eye-of-thundera
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/playwright install chromium      # if ~/.cache/ms-playwright is empty
-.venv/bin/python -m pytest -q              # expect 108 passed
+.venv/bin/python -m pytest -q              # expect 110 passed
 ```
 
 Then, with any web app running:
@@ -95,7 +103,7 @@ populated it, which is why the browser suite ran without a separate download.
 ```
 thundera/          the package — see docs/ARCHITECTURE.md for the module map
 examples/          real configs for undertale-vera and fft-psx-vera
-tests/            108 tests; test_browser.py auto-skips without Playwright
+tests/            110 tests; test_browser.py auto-skips without Playwright
 docs/VISION.md     why this exists, and the principles that are load-bearing
 docs/ARCHITECTURE.md   modules, data shapes, how {param} resolution works
 docs/BUILDLOG.md   append-only history — "why does it do that?" lives here
