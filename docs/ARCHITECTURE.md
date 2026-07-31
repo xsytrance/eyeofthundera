@@ -271,4 +271,4 @@ over a temp directory — no mocks of the thing under test. The browser suite
 asserts the properties only a renderer can prove: seeds landing before first
 paint, a required click that misses failing the run, an optional one not.
 
-Run: `.venv/bin/python -m pytest -q` (69 tests, ~40s with the browser suite).
+Run: `.venv/bin/python -m pytest -q` (103 tests, ~90s with the browser suite).
