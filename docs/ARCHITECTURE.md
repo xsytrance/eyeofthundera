@@ -39,12 +39,12 @@ Ten modules, one entry point, one data shape that survives end to end.
 
 | Module | Lines | Responsibility |
 |---|---|---|
-| `config.py` | ~340 | `thundera.toml` → validated `Config`. Surfaces, viewports, profiles, `{param}` resolution. **The layer that makes the Eye app-agnostic.** |
-| `checks.py` | ~290 | `COLLECT_JS` (the in-page collector) + `analyze()` (raw → findings with severities). |
-| `driver.py` | ~230 | Two engines. Visits every (surface × profile × viewport), measures, screenshots. |
-| `api.py` | ~180 | `look()` — orchestrates discovery, sweep, vision, montage, baseline, artifacts. |
-| `report.py` | ~150 | The JSON contract + Markdown report + exit codes. |
-| `cli.py` | ~250 | `look` / `init` / `check` / `surfaces`. Thin over `api`. |
+| `config.py` | ~550 | `thundera.toml` → validated `Config`. Surfaces, viewports, profiles, `{param}` resolution. **The layer that makes the Eye app-agnostic.** |
+| `checks.py` | ~410 | `COLLECT_JS` (the in-page collector) + `analyze()` (raw → findings with severities). |
+| `driver.py` | ~350 | Two engines. Visits every (surface × profile × viewport), measures, screenshots. |
+| `api.py` | ~250 | `look()` — orchestrates discovery, sweep, vision, montage, baseline, artifacts. |
+| `report.py` | ~180 | The JSON contract + Markdown report + exit codes. |
+| `cli.py` | ~305 | `look` / `init` / `check` / `surfaces`. Thin over `api`. |
 | `baseline.py` | ~70 | Flatten, diff, save. "What's new since accepted?" |
 | `vision.py` | ~65 | Optional Ollama vision-model critique. Best-effort by contract. |
 | `montage.py` | ~85 | Health-coloured thumbnail grids. Needs Pillow. |
