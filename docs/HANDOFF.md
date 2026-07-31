@@ -1,6 +1,6 @@
 # Handoff
 
-**Last updated:** 2026-07-30 (fifth session) · **Version:** 0.1.0 · **State:** working, published, adopted by its first consumer — one vendored copy deleted, three to go. The contrast false-positive is fixed, and all 16 of undertale-vera's views are now visible (was 9).
+**Last updated:** 2026-07-30 (fifth session) · **Version:** 0.1.0 · **State:** working, published, adopted by its first consumer — one vendored copy deleted, three to go. Contrast false-positive fixed; all 16 undertale-vera views visible (was 9); semantic accessibility pass added, opt-in.
 
 > This is the living state document. If you are picking this project up cold —
 > human or agent — read this file and `docs/VISION.md`, in that order, and you
@@ -23,7 +23,7 @@ existed as four diverging copies across Rod's projects.
 
 | | |
 |---|---|
-| **Works** | Yes. 103/103 tests green. Used on three live apps (:9092, :9095, :9096). |
+| **Works** | Yes. 108/108 tests green. Used on three live apps (:9092, :9095, :9096). |
 | **Published** | `github.com/xsytrance/eyeofthundera` (private) |
 | **Consumed by** | **`undertale-vera`** — its `inspector.py` is deleted, its `thundera.toml` is committed. `ember-lite`, `ember-pro`, `fft-psx-vera` still carry copies. |
 | **Version** | 0.1.0, not on PyPI |
@@ -47,6 +47,9 @@ existed as four diverging copies across Rod's projects.
 - `--retries` demotes a non-reproducing error to a flaky warning, on both engines
 - `navigate = "once"` carries in-memory precondition state across surfaces —
   which is what made undertale-vera's seven save-gated views reachable
+- **Semantic accessibility pass** (`[a11y] enabled = true`, opt-in). Live: two
+  real findings on ember-lite, two on undertale-vera across five surfaces, and
+  no noise — both apps already set `lang` and have a `<main>`.
 
 ### What is *not* proven
 
@@ -74,7 +77,7 @@ cd ~/eye-of-thundera
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/playwright install chromium      # if ~/.cache/ms-playwright is empty
-.venv/bin/python -m pytest -q              # expect 103 passed
+.venv/bin/python -m pytest -q              # expect 108 passed
 ```
 
 Then, with any web app running:
@@ -92,7 +95,7 @@ populated it, which is why the browser suite ran without a separate download.
 ```
 thundera/          the package — see docs/ARCHITECTURE.md for the module map
 examples/          real configs for undertale-vera and fft-psx-vera
-tests/            103 tests; test_browser.py auto-skips without Playwright
+tests/            108 tests; test_browser.py auto-skips without Playwright
 docs/VISION.md     why this exists, and the principles that are load-bearing
 docs/ARCHITECTURE.md   modules, data shapes, how {param} resolution works
 docs/BUILDLOG.md   append-only history — "why does it do that?" lives here
@@ -235,10 +238,15 @@ Each of these has a reason recorded in `docs/VISION.md` or `docs/BUILDLOG.md`.
 Worked up in the fourth session as part of a list of twelve; Rod took the first
 three and deferred these. Roughly in order of value:
 
-- **A real accessibility pass** — a new `A11Y_JS` collector (alt text, form
-  labels, accessible names, heading order, `lang`, landmarks, `tabindex > 0`,
-  focus visibility). Deliberately a *new module* rather than an edit to
-  `COLLECT_JS`, so guardrail 5 stays intact and the pass can be disabled whole.
+- **Decide whether the a11y pass should default on.** It ships opt-in so that
+  upgrading cannot change an existing run, but the noise that justified that is
+  not visible on the three live apps (2 findings each, no `no_lang`/`no_landmark`
+  at all). Revisit once ember and fft have run it. The open question is the two
+  document-level checks: on a single-page app they are one fact repeated per
+  page-view, and may belong in `meta` rather than in `findings`.
+- **Focus visibility** — the one a11y check considered and not built. Detecting
+  `:focus { outline: none }` with no replacement needs the CSSOM rather than
+  computed style, and a wrong answer here is worse than no answer.
 - **Visual diffing** — store baseline screenshots, emit `visual_diff` above a
   configurable changed-pixel ratio. Pillow extra; degrades to a stated skip.
 - **Per-viewport `settle_ms` / `pre_clicks`** — accept a table keyed by viewport

@@ -9,6 +9,61 @@ earlier decision was reversed, add a new entry saying so.
 
 ---
 
+## 2026-07-30 (fifth session, later) — The accessibility pass
+
+**What:** `thundera/a11y.py`, a second in-page collector with eight semantic
+checks. 103 → 108 tests. `main` fast-forwarded to `first-consumer` first, since
+that branch had stopped describing its contents four commits ago.
+
+**Why a separate module rather than more `COLLECT_JS`.** Three reasons, and the
+first is the one that matters: `COLLECT_JS` is frozen by guardrail, and growing
+it invites exactly the edits that rule exists to prevent. Second, this pass asks
+the DOM about *meaning*, not geometry — a label is missing or it isn't, and
+there is no threshold to tune. Third, it can be switched off wholesale, which is
+what a project buried in a11y debt will want on day one.
+
+**Everything is `warn`, deliberately.** A control a screen reader cannot name is
+broken, not untidy — but shipping these as errors would turn a green CI red for
+every consumer on the day they upgrade. Projects promote what they have cleaned
+up: `severity.no_accessible_name = "error"`.
+
+**It is opt-in, and that was a reversal mid-build.** The first version defaulted
+on. Running the suite immediately failed four unrelated browser tests with
+`no_lang` and `no_landmark` — the minimal fixture pages have neither. That was
+the feature telling on itself: those two are facts about the *document*, so on a
+single-page app where forty page-views share one document they would be forty
+identical findings. VISION says a finding must mean *"a human would call this
+sloppy"*, and forty copies of one fact is the a11y equivalent of pixel trivia.
+
+So: `[a11y] enabled = true`, off by default, same posture as `--vision`.
+Upgrading the package cannot change what an existing run reports. That all 103
+pre-existing tests then passed untouched is the evidence the change is
+non-breaking, and is worth more than any assertion about it.
+
+**What surprised us: the noise never showed up.** With the pass on against the
+live apps, ember-lite reports **two** findings and undertale-vera **two** across
+five surfaces — no `no_lang`, no `no_landmark`, no `img_no_alt`. Both apps
+already do those correctly. The findings that did land are specific and real:
+`input#chat-input` labelled only by a placeholder (which disappears on focus and
+is not a label), and an `h2 → h4` skip in the workshop view. The fear that drove
+the opt-in decision was mostly unfounded *for these apps* — but the decision
+still stands on the upgrade-safety argument alone, and now there are real
+numbers for whoever revisits the default.
+
+**The tests are as much about silence as noise.** One fixture page carries one
+instance of each defect *and* the correct-and-quiet counterparts beside it:
+`alt=""` next to a missing `alt`, an `aria-label`led icon button next to an
+empty one, three correctly-labelled inputs next to a placeholder-only one. Each
+assertion is `count(kind) == 1`, so a check that also fires on the correct
+markup fails. There is a second control page that is simply valid, and must
+produce nothing at all. A check that cries wolf on good markup is worse than no
+check — it teaches people to ignore the tool.
+
+Contrast is deliberately *not* in this pass; `COLLECT_JS` already does it
+properly by compositing the real paint stack.
+
+---
+
 ## 2026-07-30 (later) — `navigate = "once"`, and the seven views finally open
 
 **What:** One small feature, and the payoff it was built for. 97 → 103 tests.

@@ -17,6 +17,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from .a11y import A11Y_JS
 from .checks import COLLECT_JS, analyze, unverified
 from .config import Config, Step, Surface, resolve_path
 
@@ -209,6 +210,15 @@ def sweep_browser(
                         except Exception as e:
                             raw = {}
                             rec["measure_error"] = str(e)[:200]
+                        a11y_raw = None
+                        if cfg.a11y:
+                            try:
+                                a11y_raw = page.evaluate(A11Y_JS)
+                            except Exception as e:
+                                # Its own note: the geometry pass may well have
+                                # succeeded, and "no a11y findings" must not be
+                                # confused with "the a11y pass never ran".
+                                rec["a11y_error"] = str(e)[:200]
                         rec["findings"] = analyze(
                             raw,
                             ev["console"],
@@ -219,6 +229,7 @@ def sweep_browser(
                             net_ignore=cfg.net_ignore,
                             click_failures=click_failures,
                             setup_failures=setup_failures,
+                            a11y=a11y_raw,
                         )
                         rec["inventory"] = raw.get("inventory", {})
                         skipped_checks = unverified(raw)

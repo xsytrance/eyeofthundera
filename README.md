@@ -159,6 +159,20 @@ whenever stderr is not a terminal.
 | `tap_target` | warn | interactive element under 32px (mobile viewports only) |
 | `spacing` | warn | a stack whose gaps are near-misses of each other |
 
+And the semantic accessibility pass, **off unless you ask for it** (`[a11y]
+enabled = true`):
+
+| Kind | Default | Means |
+|---|---|---|
+| `img_no_alt` | warn | `<img>` with no `alt` attribute at all (`alt=""` is correct for decorative images and is not reported) |
+| `no_accessible_name` | warn | a button or link a screen reader cannot name |
+| `input_no_label` | warn | a form control with no label — a placeholder is not a label |
+| `heading_skip` | warn | `h2` followed by `h4`; breaks outline navigation |
+| `duplicate_id` | warn | same `id` twice, which breaks `label[for]` and `aria-labelledby` |
+| `no_lang` | warn | `<html>` with no `lang`, so a screen reader guesses the voice |
+| `no_landmark` | warn | no `<main>` for "skip to content" to reach |
+| `positive_tabindex` | warn | `tabindex > 0`, forcing an order that fights the visual one |
+
 Thresholds are conservative on purpose: a finding should mean *"a human would
 call this sloppy"*, not *"pixel trivia"*. If you have decided you don't care
 about one, turn it off in config rather than loosening the check for everyone:
@@ -168,6 +182,28 @@ about one, turn it off in config rather than loosening the check for everyone:
 spacing = "off"
 contrast = "error"     # or promote it, once you're clean
 ```
+
+### Accessibility
+
+```toml
+[a11y]
+enabled = true
+```
+
+Off by default, for the same reason `--vision` is: upgrading the package should
+never silently change what your run reports. Everything it emits is a `warn`, so
+turning it on cannot break a green build — promote what you have cleaned up
+(`severity.no_accessible_name = "error"`) and the tool starts holding you to it.
+
+It reads the DOM, not the accessibility tree, and it is deliberately quiet about
+things it cannot know. `alt=""` is *correct* for a decorative image and is never
+reported. A button named by `aria-label`, by `aria-labelledby`, by `title`, or
+by a nested `<img alt="…">` is fine. Anything inside `aria-hidden="true"` is
+skipped, because the author already said "ignore me". A check that fires on
+correct markup teaches people to ignore the tool.
+
+Contrast is *not* part of this pass — the geometry collector already does it
+properly, by compositing the real paint stack.
 
 ### What it *couldn't* check
 

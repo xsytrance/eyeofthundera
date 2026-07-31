@@ -310,6 +310,13 @@ path = "/api/lore?q=waterfall"
 group = "api"
 settle_ms = 400
 
+# The semantic accessibility pass — off by default in the engine, on here.
+# On this app it is quiet and specific: an unlabelled chat input (a placeholder
+# is not a label) and one h2 -> h4 heading skip in the workshop. No `no_lang`
+# or `no_landmark`, because the app already does both correctly.
+[a11y]
+enabled = true
+
 [network]
 # The frontend smoke deliberately posts a bad watch path (expected 400).
 # Google Fonts is an external CDN: the CSS ships serif fallbacks, so a failure

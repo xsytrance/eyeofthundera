@@ -146,6 +146,15 @@ class Config:
     severity: dict[str, str] = field(default_factory=dict)  # kind -> error|warn|off
     net_ignore: tuple[str, ...] = ("favicon",)   # URL substrings whose 4xx/5xx is expected
     vision_sample: tuple[str, ...] = ()
+    # The semantic accessibility pass, off until a project asks for it
+    # (`[a11y] enabled = true`). Opt-in for the same reason `--vision` is:
+    # upgrading the package must never silently change what an existing
+    # consumer's run reports. It also has a known noise shape — `no_lang` and
+    # `no_landmark` are facts about the *document*, so on a single-page app
+    # where forty page-views share one document they are forty identical
+    # findings. Whether that is worth defaulting on is a decision to make with
+    # real numbers from the consumers, not in advance.
+    a11y: bool = False
     source: Path | None = None
 
     # ── construction ─────────────────────────────────────────────────────────
@@ -293,6 +302,7 @@ class Config:
             severity=severity,
             net_ignore=tuple(raw.get("network", {}).get("ignore", DEFAULT_NET_IGNORE)),
             vision_sample=vs,
+            a11y=bool(raw.get("a11y", {}).get("enabled", False)),
             source=source,
         )
 

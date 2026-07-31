@@ -328,6 +328,12 @@ DEFAULT_SEVERITY: dict[str, str] = {
     "spacing": "warn",
 }
 
+from .a11y import A11Y_SEVERITY, findings as _a11y_findings  # noqa: E402
+
+# The semantic accessibility pass lives in its own module but shares this
+# severity table, so `severity.<kind>` in a config works identically for both.
+DEFAULT_SEVERITY.update(A11Y_SEVERITY)
+
 KINDS = tuple(DEFAULT_SEVERITY)
 
 # Network noise that is expected and must not fail runs. Projects add their own
@@ -360,6 +366,7 @@ def analyze(
     net_ignore: tuple[str, ...] = DEFAULT_NET_IGNORE,
     click_failures: list | None = None,
     setup_failures: list | None = None,
+    a11y: dict | None = None,
 ) -> list[dict]:
     """Turn raw in-page measurements + captured events into findings."""
     sev = {**DEFAULT_SEVERITY, **(severity or {})}
@@ -407,4 +414,6 @@ def analyze(
         add("tap_target", f"{t['sel']} {t['w']}×{t['h']}px “{t['label']}”", t["sel"])
     for s2 in raw.get("spacing", []):
         add("spacing", f"{s2['sel']} — sibling gaps {s2['gaps']} (spread {s2['spread']}px)", s2["sel"])
+    if a11y:
+        _a11y_findings(a11y, add)
     return found

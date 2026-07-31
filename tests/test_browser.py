@@ -328,6 +328,110 @@ def test_a_failed_profile_setup_taints_every_surface_in_the_context(site, tmp_pa
     assert r.exit_code == 1
 
 
+# ── accessibility pass ───────────────────────────────────────────────────────
+# One page carrying one instance of each defect, plus the correct-and-quiet
+# counterparts: alt="" on a decorative image, a properly labelled input, an
+# aria-label on an icon button. A check that fires on those is worse than
+# useless — it teaches people to ignore the tool.
+
+PX = ("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+
+A11Y_PAGE = f"""<!doctype html><html><head><meta charset=utf-8><title>a11y</title></head>
+<body style="background:#fff;color:#111">
+<main>
+  <h1>title</h1>
+  <h3>skipped a level</h3>
+
+  <img src="{PX}" alt="described properly" width=20 height=20>
+  <img src="{PX}" alt="" width=20 height=20>
+  <img src="{PX}" width=20 height=20>
+
+  <button aria-label="close">&times;</button>
+  <button><img src="{PX}" alt="save" width=16 height=16></button>
+  <button></button>
+
+  <label for="named">Name</label><input id="named">
+  <label>Wrapped <input></label>
+  <input aria-label="search">
+  <input placeholder="just a placeholder">
+
+  <div id="dup">one</div><div id="dup">two</div>
+  <a href="#x" tabindex="3">forced order</a>
+  <span aria-hidden="true"><button></button></span>
+</main>
+</body></html>
+"""
+
+
+def _a11y_kinds(site, tmp_path, **over):
+    (tmp_path / "a11y.html").write_text(A11Y_PAGE)
+    raw = {
+        "app": {"name": "t", "base": site},
+        "viewports": [{"label": "d", "width": 1024, "height": 768}],
+        "surfaces": [{"key": "a", "path": "/a11y.html", "settle_ms": 300}],
+        "a11y": {"enabled": True},
+    }
+    raw.update(over)
+    r = look(Config.from_dict(raw), out_dir=tmp_path / "run", engine="browser",
+             make_montage=False, log=lambda *a: None)
+    return r, [f["kind"] for f in r.body["records"][0]["findings"]]
+
+
+def test_a11y_is_off_unless_asked_for(site, tmp_path):
+    """Upgrading the package must not silently change an existing run."""
+    (tmp_path / "a11y.html").write_text(A11Y_PAGE)
+    r = look(Config.from_dict({
+        "app": {"name": "t", "base": site},
+        "viewports": [{"label": "d", "width": 1024, "height": 768}],
+        "surfaces": [{"key": "a", "path": "/a11y.html", "settle_ms": 300}],
+    }), out_dir=tmp_path / "run", engine="browser", make_montage=False,
+        log=lambda *a: None)
+    assert r.body["records"][0]["findings"] == []
+
+
+def test_a11y_finds_each_defect_exactly_once(site, tmp_path):
+    r, kinds = _a11y_kinds(site, tmp_path)
+    assert kinds.count("img_no_alt") == 1          # alt="" and a real alt are fine
+    assert kinds.count("no_accessible_name") == 1  # aria-label and nested alt are fine
+    assert kinds.count("input_no_label") == 1      # for=, wrapping, aria-label are fine
+    assert kinds.count("heading_skip") == 1        # h1 -> h3
+    assert kinds.count("duplicate_id") == 1
+    assert kinds.count("positive_tabindex") == 1
+    assert r.exit_code == 0                        # all warnings by default
+
+
+def test_a11y_does_not_fire_on_a_clean_document(site, tmp_path):
+    """The control. A page that does it right must produce nothing."""
+    (tmp_path / "clean.html").write_text(
+        f'<!doctype html><html lang="en"><head><meta charset=utf-8><title>ok</title>'
+        '</head><body><main><h1>title</h1><h2>sub</h2>'
+        f'<img src="{PX}" alt="a thing" width=20 height=20>'
+        '<label for="q">Query</label><input id="q">'
+        '<button>Go</button></main></body></html>'
+    )
+    r = look(Config.from_dict({
+        "app": {"name": "t", "base": site},
+        "viewports": [{"label": "d", "width": 1024, "height": 768}],
+        "surfaces": [{"key": "c", "path": "/clean.html", "settle_ms": 300}],
+        "a11y": {"enabled": True},
+    }), out_dir=tmp_path / "run", engine="browser", make_montage=False,
+        log=lambda *a: None)
+    assert r.body["records"][0]["findings"] == []
+
+
+def test_document_level_a11y_checks_fire(site, tmp_path):
+    _, kinds = _a11y_kinds(site, tmp_path)
+    assert "no_lang" in kinds                      # the fixture omits it
+    assert "no_landmark" not in kinds              # ...but it does have <main>
+
+
+def test_a11y_kinds_honour_severity_config(site, tmp_path):
+    _, kinds = _a11y_kinds(site, tmp_path, severity={"img_no_alt": "off"})
+    assert "img_no_alt" not in kinds
+    r, _ = _a11y_kinds(site, tmp_path, severity={"img_no_alt": "error"})
+    assert r.exit_code == 1
+
+
 # ── navigate = "once" ────────────────────────────────────────────────────────
 # A click-routed SPA keeps its state in memory, and the per-surface reload
 # throws it away. This is the page that proves it: #inc bumps a counter held

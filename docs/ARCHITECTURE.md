@@ -1,6 +1,6 @@
 # Architecture
 
-Ten modules, one entry point, one data shape that survives end to end.
+Eleven modules, one entry point, one data shape that survives end to end.
 
 ```
                     thundera.toml
@@ -40,6 +40,7 @@ Ten modules, one entry point, one data shape that survives end to end.
 | Module | Lines | Responsibility |
 |---|---|---|
 | `config.py` | ~550 | `thundera.toml` → validated `Config`. Surfaces, viewports, profiles, `{param}` resolution. **The layer that makes the Eye app-agnostic.** |
+| `a11y.py` | ~200 | `A11Y_JS` — the semantic accessibility collector. Opt-in, its own module so `COLLECT_JS` stays frozen. |
 | `checks.py` | ~410 | `COLLECT_JS` (the in-page collector) + `analyze()` (raw → findings with severities). |
 | `driver.py` | ~350 | Two engines. Visits every (surface × profile × viewport), measures, screenshots. |
 | `api.py` | ~250 | `look()` — orchestrates discovery, sweep, vision, montage, baseline, artifacts. |
@@ -84,6 +85,16 @@ Step                               one precondition action
 ├── value     : str | dict         selector, or {selector, text|path}
 └── optional  : bool               the "?" prefix — allowed not to apply
 ```
+
+`a11y` switches on the semantic accessibility pass (`[a11y] enabled = true`),
+a second `page.evaluate()` from `a11y.py`. It is a separate module and a
+separate collector on purpose: `COLLECT_JS` is frozen, and this pass asks the
+DOM about *meaning* rather than geometry — a label is missing or it isn't, and
+there is no threshold to tune. Its findings route through the same
+`analyze()` emitter, so `severity.<kind>` works identically for both. A failure
+to run it sets `a11y_error` on the record rather than the shared
+`measure_error`, because "no accessibility findings" and "the accessibility
+pass never ran" are different claims.
 
 `navigate` decides whether each surface gets a fresh page load. `"always"` (the
 default) reloads before every surface, which is isolation: nothing surface A did
@@ -236,6 +247,9 @@ warn    reported only          contrast, clipped_text, row_misalign,
                                off_center, tap_target, spacing
 off     not emitted at all     obscured (by default), plus anything config
                                turns off
+a11y    warn, opt-in           img_no_alt, no_accessible_name, input_no_label,
+                               heading_skip, duplicate_id, no_lang,
+                               no_landmark, positive_tabindex
 ```
 
 ```
