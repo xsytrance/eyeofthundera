@@ -185,9 +185,12 @@ contrast = "error"     # or promote it, once you're clean
 
 ### Accessibility
 
+```bash
+thundera look http://localhost:3000 --a11y     # zero-config
+```
 ```toml
 [a11y]
-enabled = true
+enabled = true                                  # or in config
 ```
 
 Off by default, for the same reason `--vision` is: upgrading the package should

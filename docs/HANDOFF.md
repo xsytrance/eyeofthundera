@@ -23,7 +23,7 @@ existed as four diverging copies across Rod's projects.
 
 | | |
 |---|---|
-| **Works** | Yes. 108/108 tests green. Used on three live apps (:9092, :9095, :9096). |
+| **Works** | Yes. 108/108 tests green. Cold-install verified from a clean venv. Used on three live apps (:9092, :9095, :9096). |
 | **Published** | `github.com/xsytrance/eyeofthundera` (private) |
 | **Consumed by** | **`undertale-vera`** — its `inspector.py` is deleted, its `thundera.toml` is committed. `ember-lite`, `ember-pro`, `fft-psx-vera` still carry copies. |
 | **Version** | 0.1.0, not on PyPI |

@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from . import __version__
@@ -113,6 +114,11 @@ def cmd_look(args, parser) -> int:
     )
     if args.quick:
         cfg = cfg.select(profiles=[cfg.profiles[0].name])
+    if args.a11y is not None:
+        # Zero-config mode has no toml to carry [a11y], so without this flag the
+        # accessibility pass would be unreachable for anyone doing the thing the
+        # README leads with: `thundera look http://host`.
+        cfg = replace(cfg, a11y=args.a11y)
 
     vision_mode = "off"
     if args.vision:
@@ -250,6 +256,11 @@ def build_parser() -> argparse.ArgumentParser:
                         help="record this run as the baseline (default .thundera/baseline.json)")
     look_p.add_argument("--fail-on-new", action="store_true",
                         help="exit 1 on any new finding vs baseline, warnings included")
+    look_p.add_argument("--a11y", dest="a11y", action="store_true", default=None,
+                        help="run the semantic accessibility checks "
+                             "(also: [a11y] enabled = true in config)")
+    look_p.add_argument("--no-a11y", dest="a11y", action="store_false",
+                        help="skip them even if the config asks for them")
     look_p.add_argument("--retries", type=int, default=0, metavar="N",
                         help="re-run failed page-views N times; errors that don't "
                              "reproduce are demoted to warnings and marked flaky")
