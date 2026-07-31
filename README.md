@@ -12,6 +12,10 @@ An agent writing frontend code is otherwise working blind. It can run the tests
 and read the HTML, but it cannot see that the button it just added is 20px tall
 on a phone, or that its text is grey-on-grey. This gives it eyes.
 
+> **Handing this to an agent?** [`SUMMONING.md`](SUMMONING.md) is a prompt you
+> can paste straight in. It installs the Eye, opens it on your app, and reports
+> back — no setup instructions needed from you.
+
 ```console
 $ thundera look http://127.0.0.1:9092
 Eye of Thundera — app @ http://127.0.0.1:9092 [browser]

@@ -9,6 +9,35 @@ earlier decision was reversed, add a new entry saying so.
 
 ---
 
+## 2026-07-30 — Public, and a way to hand it over
+
+**What:** The repo is public and MIT. `SUMMONING.md` is a prompt you paste to an
+agent; it installs the Eye, opens it on your app and reports back, so handing
+the tool to somebody costs one message rather than a tutorial.
+
+**Audited before flipping the switch, not after.** Publishing is not reversible
+in practice — things get cached and indexed. Checked: no secret-shaped strings
+outside documentation *about* env vars and one fake `s3cret` test literal; no
+emails in tracked files; the committed save fixtures are the synthetic ones,
+named "Frisk", which is Undertale's default protagonist and not a person. 34
+tracked files, all intended.
+
+Commit author email is public now, as it is for every public repo. Called out
+because it is the one thing an audit of *files* would miss.
+
+**The install command in the docs was run before being handed to anybody.** A
+clean venv, the public git URL, verbatim the string in `SUMMONING.md`. It
+installs, the binary reports its version, and the first sweep drew the eye and
+found three errors and nine warnings on a throwaway page. A broken first command
+is a bad introduction, and "it should work" is not evidence.
+
+**On `SUMMONING.md` rather than more README.** The README is for someone
+deciding whether to use this. The summoning is for someone who has already
+decided and wants it in their agent's hands in one paste. Two audiences, two
+documents; merging them would serve neither.
+
+---
+
 ## 2026-07-30 (fifth session, later still) — Making it usable by somebody else
 
 **What:** The work of getting the Eye ready to hand to a second person with a

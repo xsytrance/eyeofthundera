@@ -24,7 +24,7 @@ existed as four diverging copies across Rod's projects.
 | | |
 |---|---|
 | **Works** | Yes. 110/110 tests green. Cold-install into a clean venv verified. Used on three live apps (:9092, :9095, :9096). |
-| **Published** | `github.com/xsytrance/eyeofthundera` (private) |
+| **Published** | `github.com/xsytrance/eyeofthundera` — **public** as of 2026-07-30, MIT |
 | **Consumed by** | **`undertale-vera`** — its `inspector.py` is deleted, its `thundera.toml` is committed. `ember-lite`, `ember-pro`, `fft-psx-vera` still carry copies. |
 | **Version** | 0.1.0, not on PyPI |
 | **CI** | GitHub Actions — pytest on push/PR (`.github/workflows/ci.yml`) |
@@ -53,6 +53,10 @@ existed as four diverging copies across Rod's projects.
 - **`--animation`** draws the eye even into a pipe. An agent's stderr is never a
   terminal, so without it the eye was unreachable for the audience this project
   exists for.
+- **Installable by a stranger.** The documented one-liner
+  (`pip install "eye-of-thundera[all] @ git+https://…"`) was run from a clean
+  venv against the public URL and works; the run after it drew the eye and found
+  real defects. `SUMMONING.md` is the paste-to-an-agent handover.
 - **Portable to a second machine.** No platform-specific calls anywhere in the
   package; the art is pure ASCII and survives `LANG=C`; a cold install into a
   clean venv works, and zero-config found real defects on a throwaway site first
