@@ -30,6 +30,23 @@ def have_playwright() -> bool:
     return True
 
 
+# A navigation that FAILED versus one that merely never settled. Conflating the
+# two made the Eye report "clean · 0 errors" for a port with nothing on it — the
+# worst possible failure for a tool whose entire job is seeing what you would
+# have missed. Found 2026-08-08 against http://127.0.0.1:59999.
+_NAV_FATAL = (
+    "ERR_CONNECTION_REFUSED", "ERR_CONNECTION_RESET", "ERR_NAME_NOT_RESOLVED",
+    "ERR_ADDRESS_UNREACHABLE", "ERR_CONNECTION_CLOSED", "ERR_EMPTY_RESPONSE",
+    "ERR_SSL_", "ERR_CERT_", "ERR_SOCKET_NOT_CONNECTED", "ERR_ABORTED",
+    "NS_ERROR_CONNECTION_REFUSED", "NS_ERROR_UNKNOWN_HOST",
+    "Could not connect", "connection refused",
+)
+
+
+def _nav_failed(msg: str) -> bool:
+    return any(t.lower() in msg.lower() for t in _NAV_FATAL)
+
+
 def _record(cfg: Config, surf: Surface, profile: str, viewport: str, params: dict) -> dict:
     path, why = resolve_path(surf, params)
     rec = {
@@ -174,7 +191,20 @@ def sweep_browser(
                             except Exception as e:
                                 # networkidle never settling is common on apps
                                 # with polling/SSE; measure anyway and note it.
-                                rec["nav_note"] = f"{type(e).__name__} (continuing after settle)"
+                                #
+                                # BUT: this used to swallow ERR_CONNECTION_REFUSED
+                                # identically, so pointing the Eye at a port with
+                                # NOTHING on it reported "clean, 0 errors" — a
+                                # false negative in the one tool whose whole job
+                                # is catching what a reviewer would have seen.
+                                # Found 2026-08-08 against http://127.0.0.1:59999.
+                                # A settle timeout is a note. A dead server is a
+                                # finding.
+                                msg = str(e)
+                                if _nav_failed(msg):
+                                    rec["nav_error"] = msg.strip().splitlines()[0][:200]
+                                else:
+                                    rec["nav_note"] = f"{type(e).__name__} (continuing after settle)"
                         page.wait_for_timeout(surf.settle_ms)
                         # Surface setup establishes the precondition; pre_clicks
                         # then navigate to the view. Order matters.
@@ -231,6 +261,43 @@ def sweep_browser(
                             setup_failures=setup_failures,
                             a11y=a11y_raw,
                         )
+                        # A page that never loaded, or loaded into nothing, must
+                        # not be reported as clean. Two ways to be blank: the
+                        # server refused us (nav_error, set above), or it
+                        # answered with an empty document. Both are the same
+                        # thing to a reviewer: there was nothing to review.
+                        # Ask the DOM, do not infer from the inventory: that dict
+                        # is empty on a perfectly good page, and guessing at its
+                        # shape turned a real fix into a false positive on the
+                        # first try. One evaluate, unambiguous.
+                        # TRULY empty only: no elements AND no text. A minimal
+                        # page is still a page — a first `< 3` threshold failed
+                        # this project's own fixtures, which legitimately serve
+                        # a one-element document. The dead-server case is
+                        # already caught by nav_error above; this only adds the
+                        # 200-that-rendered-nothing case, and must not invent
+                        # opinions about how small a real page may be.
+                        try:
+                            probe = page.evaluate(
+                                "(() => { const b = document.body;"
+                                " return b ? [b.querySelectorAll('*').length,"
+                                " (b.innerText || '').trim().length] : [0, 0]; })()")
+                            n_el, n_text = int(probe[0]), int(probe[1])
+                        except Exception:
+                            n_el, n_text = None, None
+                        rec["dom_elements"] = n_el
+                        blank = n_el == 0 and n_text == 0
+                        if rec.get("nav_error") or blank:
+                            why = rec.get("nav_error") or (
+                                "the document rendered no elements and no text — "
+                                "there was nothing to review")
+                            rec["findings"] = [
+                                {"kind": "nav_failed",
+                                 "severity": cfg.severity.get("nav_failed", "error"),
+                                 "detail": f"{rec['url']}: {why}",
+                                 "anchor": "navigation"}
+                            ] + list(rec.get("findings") or [])
+
                         rec["inventory"] = raw.get("inventory", {})
                         skipped_checks = unverified(raw)
                         if skipped_checks:

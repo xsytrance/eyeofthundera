@@ -296,6 +296,8 @@ COLLECT_JS = r"""
 # thundera.toml — the way to quiet a check you have decided you don't care
 # about, rather than editing thresholds.
 DEFAULT_SEVERITY: dict[str, str] = {
+    # A page that never loaded is not a clean page.
+    "nav_failed": "error",
     "broken_img": "error",
     "console_error": "error",
     "net_4xx": "error",

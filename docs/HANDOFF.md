@@ -1,6 +1,6 @@
 # Handoff
 
-**Last updated:** 2026-07-30 (fifth session) · **Version:** 0.1.0 · **State:** working, published, adopted by its first consumer — one vendored copy deleted, three to go. Contrast false-positive fixed; all 16 undertale-vera views visible (was 9); semantic accessibility pass added, opt-in.
+**Last updated:** 2026-08-08
 
 > This is the living state document. If you are picking this project up cold —
 > human or agent — read this file and `docs/VISION.md`, in that order, and you
@@ -306,3 +306,20 @@ three and deferred these. Roughly in order of value:
 A `pre-commit` hook enforces the HANDOFF half of this for changes under
 `thundera/`. Install it with `tools/install-hooks.sh`. It is a reminder, not a
 cage — `SKIP_DOC_CHECK=1 git commit` when you genuinely mean it.
+
+## 2026-08-08 — the Eye was reporting dead servers as CLEAN
+
+**Fixed.** `thundera look http://127.0.0.1:59999` (nothing listening) returned
+`2 clean · 0 error`. Two causes: `except Exception` around `page.goto` swallowed
+`ERR_CONNECTION_REFUSED` identically to a networkidle settle timeout, and
+nothing ever asserted the page had content.
+
+**Now:** navigation errors are classified (`_nav_failed`) and raised as a
+`nav_failed` finding at severity `error`; settle timeouts remain a note, as they
+should. A 200 that renders no elements *and* no text is also flagged.
+
+**Watch out:** the first threshold was `< 3 elements` and it failed this
+project's own fixtures, which legitimately serve a one-element document. A
+minimal page is still a page — only *truly* empty counts.
+
+**Proven:** 110 tests green; dead port → 2 errors; live pages → clean.

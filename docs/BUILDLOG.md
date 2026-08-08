@@ -614,3 +614,20 @@ only ever been opened on a desktop.
   until a third app has used the CLI so the tool surface is designed against
   real usage.
 - **Migrating the four copies** — the actual payoff, and the next job.
+
+## 2026-08-08 — the Eye was reporting dead servers as CLEAN
+
+**Fixed.** `thundera look http://127.0.0.1:59999` (nothing listening) returned
+`2 clean · 0 error`. Two causes: `except Exception` around `page.goto` swallowed
+`ERR_CONNECTION_REFUSED` identically to a networkidle settle timeout, and
+nothing ever asserted the page had content.
+
+**Now:** navigation errors are classified (`_nav_failed`) and raised as a
+`nav_failed` finding at severity `error`; settle timeouts remain a note, as they
+should. A 200 that renders no elements *and* no text is also flagged.
+
+**Watch out:** the first threshold was `< 3 elements` and it failed this
+project's own fixtures, which legitimately serve a one-element document. A
+minimal page is still a page — only *truly* empty counts.
+
+**Proven:** 110 tests green; dead port → 2 errors; live pages → clean.
